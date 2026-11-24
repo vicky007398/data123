@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import psycopg
-from psycopg import sql
+import pyodbc
+from contextlib import closing
 import plotly.express as px
 from datetime import date, datetime, time, timedelta
 
@@ -11,21 +11,27 @@ st.caption("Read-only internal MES analytics")
 with st.sidebar:
     st.header("Database connection")
     host=st.text_input("Host")
-    port=st.number_input("Port",1,65535,5432)
+    port=st.number_input("Port",1,65535,1433)
     db=st.text_input("Database")
     user=st.text_input("Read-only username")
     password=st.text_input("Password",type="password")
-    sslmode=st.selectbox("TLS",["require","verify-full","prefer"])
+    driver=st.selectbox("SQL Server ODBC driver", [d for d in pyodbc.drivers() if "SQL Server" in d] or ["ODBC Driver 18 for SQL Server"])
+    trust=st.checkbox("Trust server certificate (only if approved by IT)",False)
     connect=st.button("Connect / discover tables")
 def connection():
-    return psycopg.connect(host=host,port=int(port),dbname=db,user=user,password=password,sslmode=sslmode,connect_timeout=5,options="-c default_transaction_read_only=on -c statement_timeout=20000")
+    def esc(v): return "{"+str(v).replace("}","}}")+"}"
+    cs="DRIVER="+esc(driver)+";SERVER="+esc(host+","+str(int(port)))+";DATABASE="+esc(db)+";UID="+esc(user)+";PWD="+esc(password)+";Encrypt=yes;TrustServerCertificate="+("yes" if trust else "no")+";"
+    c=pyodbc.connect(cs,timeout=5,autocommit=True)
+    c.timeout=20
+    return c
+def ident(n): return "["+n.replace("]","]]")+"]"
 if connect:
     try:
-        with connection() as c:
-            st.session_state.tables=c.execute("SELECT table_schema,table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY 1,2").fetchall()
-        st.sidebar.success("Connected in read-only mode")
+        with closing(connection()) as c:
+            st.session_state.tables=[tuple(row) for row in c.cursor().execute("SELECT TABLE_SCHEMA,TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY 1,2").fetchall()]
+        st.sidebar.success("Connected (SELECT-only application; verify account permissions)")
     except Exception as e:
-        st.sidebar.error("Connection failed: "+type(e).__name__)
+        st.sidebar.error("Connection failed: "+type(e).__name__+" | SQLSTATE: "+str(e.args[0] if e.args else "unknown"))
         st.session_state.pop("tables",None)
 if not st.session_state.get("tables"):
     st.info("Enter local database credentials and connect to discover tables.")
@@ -39,29 +45,29 @@ st.sidebar.caption("Production day: 06:00 to next day 06:00. Database timestamps
 @st.fragment(run_every="60s" if auto else None)
 def dashboard():
     try:
-        with connection() as c:
-            cols=c.execute("SELECT column_name,data_type FROM information_schema.columns WHERE table_schema=%s AND table_name=%s",(schema,table)).fetchall()
+        with closing(connection()) as c:
+            cols=c.cursor().execute("SELECT COLUMN_NAME,DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",schema,table).fetchall()
             lookup={n.upper():n for n,t in cols}
             types={n.upper():t for n,t in cols}
             stages={"Lamination":"LAM_DATE_IN","Sun simulator":"IV_TIME","FQC":"FQC_TIME","Pre-EL":"PRE_EL_TIME","Mid-EL":"MID_EL_TIME","Final EL":"EL_TIME"}
             levels={"Pre-EL":"PRE_EL_LEVEL","Mid-EL":"MID_EL_LEVEL","Final EL":"EL_LEVEL"}
             if "LOT_NUMBER" not in lookup:
                 st.error("LOT_NUMBER not found"); return
-            active={k:v for k,v in stages.items() if v in lookup and types[v].startswith("timestamp")}
+            active={k:v for k,v in stages.items() if v in lookup and types[v] in ("datetime","datetime2","smalldatetime","datetimeoffset","date")}
             if not active:
                 st.error("No supported timestamp columns found. Text dates need explicit parsing."); return
             wanted=list(dict.fromkeys(["LOT_NUMBER",*active.values(),*levels.values(),"PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE","FQC_LEVEL"]))
             wanted=[x for x in wanted if x in lookup]
-            predicates=[sql.SQL("({} >= %s AND {} < %s)").format(sql.Identifier(lookup[v]),sql.Identifier(lookup[v])) for v in active.values()]
-            q=sql.SQL("SELECT {} FROM {} WHERE {}").format(sql.SQL(",").join(sql.Identifier(lookup[x]) for x in wanted),sql.Identifier(schema,table),sql.SQL(" OR ").join(predicates))
-            with c.cursor() as cur:
+            predicates=[f"({ident(lookup[v])} >= ? AND {ident(lookup[v])} < ?)" for v in active.values()]
+            q="SELECT TOP (100001) "+",".join(ident(lookup[x]) for x in wanted)+" FROM "+ident(schema)+"."+ident(table)+" WHERE "+" OR ".join(predicates)
+            with closing(c.cursor()) as cur:
                 cur.execute(q,[p for _ in predicates for p in (start,end)])
-                rows=cur.fetchmany(100001)
+                rows=[tuple(row) for row in cur.fetchmany(100001)]
             if len(rows)>100000:
                 st.error("Safety limit exceeded; use a narrower query or server-side aggregation."); return
         df=pd.DataFrame(rows,columns=wanted)
     except Exception as e:
-        st.error("Query failed: "+type(e).__name__); return
+        st.error("Query failed: "+type(e).__name__+" | SQLSTATE: "+str(e.args[0] if e.args else "unknown")); return
     def events(stage):
         col=active.get(stage)
         if not col: return pd.DataFrame()
