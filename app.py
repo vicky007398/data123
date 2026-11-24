@@ -24,16 +24,16 @@ $ErrorActionPreference = 'Stop'
 try {
     $req = [Console]::In.ReadToEnd() | ConvertFrom-Json
     $b = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $b.DataSource = $req.host + ',' + $req.port
-    $b.InitialCatalog = $req.database
-    $b.UserID = $req.user
-    $b.Password = $req.password
-    $b.Encrypt = $true
-    $b.TrustServerCertificate = [bool]$req.trust
-    $b.ConnectTimeout = 8
-    $b.PersistSecurityInfo = $false
+    $b['Data Source'] = $req.host + ',' + $req.port
+    $b['Initial Catalog'] = $req.database
+    $b['User ID'] = $req.user
+    $b['Password'] = $req.password
+    $b['Encrypt'] = $true
+    $b['Trust Server Certificate'] = [bool]$req.trust
+    $b['Connect Timeout'] = 8
+    $b['Persist Security Info'] = $false
     $c = New-Object System.Data.SqlClient.SqlConnection
-    $c.ConnectionString = $b.ConnectionString
+    $c.ConnectionString = $b.get_ConnectionString()
     try {
         $c.Open()
         $cmd = $c.CreateCommand()
