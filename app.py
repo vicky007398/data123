@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-import pyodbc
+import subprocess
+import json
 from contextlib import closing
 import plotly.express as px
 from datetime import date, datetime, time, timedelta
@@ -15,15 +16,95 @@ with st.sidebar:
     db=st.text_input("Database")
     user=st.text_input("Read-only username")
     password=st.text_input("Password",type="password")
-    driver=st.selectbox("SQL Server ODBC driver", [d for d in pyodbc.drivers() if "SQL Server" in d] or ["ODBC Driver 18 for SQL Server"])
+    st.caption("Windows .NET SqlClient — no ODBC driver needed")
     trust=st.checkbox("Trust server certificate (only if approved by IT)",False)
     connect=st.button("Connect / discover tables")
-def connection():
-    def esc(v): return "{"+str(v).replace("}","}}")+"}"
-    cs="DRIVER="+esc(driver)+";SERVER="+esc(host+","+str(int(port)))+";DATABASE="+esc(db)+";UID="+esc(user)+";PWD="+esc(password)+";Encrypt=yes;TrustServerCertificate="+("yes" if trust else "no")+";"
-    c=pyodbc.connect(cs,timeout=5,autocommit=True)
-    c.timeout=20
-    return c
+PS_QUERY = r"""
+$ErrorActionPreference = 'Stop'
+try {
+    $req = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    $b = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
+    $b.DataSource = $req.host + ',' + $req.port
+    $b.InitialCatalog = $req.database
+    $b.UserID = $req.user
+    $b.Password = $req.password
+    $b.Encrypt = $true
+    $b.TrustServerCertificate = [bool]$req.trust
+    $b.ConnectTimeout = 8
+    $b.PersistSecurityInfo = $false
+    $c = New-Object System.Data.SqlClient.SqlConnection
+    $c.ConnectionString = $b.ConnectionString
+    try {
+        $c.Open()
+        $cmd = $c.CreateCommand()
+        $cmd.CommandTimeout = 25
+        $cmd.CommandText = $req.query
+        for ($i=0; $i -lt $req.params.Count; $i++) {
+            $p = $req.params[$i]
+            if ($p.kind -eq 'datetime') {
+                $param = $cmd.Parameters.Add('@p'+$i,[System.Data.SqlDbType]::DateTime2)
+                $param.Value = [datetime]::Parse($p.value,[Globalization.CultureInfo]::InvariantCulture)
+            } else {
+                $param = $cmd.Parameters.Add('@p'+$i,[System.Data.SqlDbType]::NVarChar,4000)
+                $param.Value = [string]$p.value
+            }
+        }
+        $reader = $cmd.ExecuteReader()
+        $rows = New-Object 'System.Collections.Generic.List[object]'
+        try {
+            while ($reader.Read()) {
+                $row = New-Object 'object[]' $reader.FieldCount
+                for ($j=0; $j -lt $reader.FieldCount; $j++) {
+                    if ($reader.IsDBNull($j)) { $row[$j] = $null }
+                    else {
+                        $v = $reader.GetValue($j)
+                        if ($v -is [datetime] -or $v -is [datetimeoffset]) { $row[$j] = $v.ToString('o') }
+                        elseif ($v -is [guid]) { $row[$j] = $v.ToString() }
+                        else { $row[$j] = $v }
+                    }
+                }
+                $rows.Add($row)
+            }
+        } finally { $reader.Dispose(); $cmd.Dispose() }
+        $out = @{ok=$true;rows=$rows.ToArray()}
+    } finally { $c.Dispose() }
+} catch {
+    $e=$_.Exception
+    while ($e.InnerException) { $e=$e.InnerException }
+    $msg=$e.Message
+    if ($req.password) { $msg=$msg.Replace([string]$req.password,'[redacted]') }
+    $out=@{ok=$false;error=$msg}
+}
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::Write(($out | ConvertTo-Json -Depth 8 -Compress))
+"""
+class SqlClientCursor:
+    def execute(self, query, *params):
+        if not query.lstrip().upper().startswith("SELECT "):
+            raise ValueError("Only SELECT queries are allowed")
+        if len(params)==1 and isinstance(params[0], (list,tuple)):
+            params=params[0]
+        # Queries originate only from the application, with quoted identifiers.
+        if query.count("?") != len(params):
+            raise ValueError("SQL parameter count mismatch")
+        parts=query.split("?")
+        query="".join(part + (f"@p{i}" if i<len(params) else "") for i,part in enumerate(parts))
+        payload={"host":host,"port":str(int(port)),"database":db,"user":user,"password":password,"trust":trust,"query":query,"params":[{"kind":"datetime" if isinstance(p,datetime) else "text","value":p.isoformat() if isinstance(p,datetime) else str(p)} for p in params]}
+        result=subprocess.run(["powershell.exe","-NoProfile","-NonInteractive","-Command",PS_QUERY],input=json.dumps(payload,ensure_ascii=True),capture_output=True,encoding="utf-8",timeout=65,creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+        if result.returncode or not result.stdout.strip():
+            raise RuntimeError("Windows SqlClient bridge failed; check PowerShell policy with IT")
+        output=json.loads(result.stdout)
+        if not output.get("ok"):
+            raise RuntimeError(output.get("error","SQL Server connection failed"))
+        self.rows=output["rows"]
+        return self
+    def fetchall(self): return self.rows
+    def fetchmany(self,n): return self.rows[:n]
+    def close(self): pass
+class SqlClientConnection:
+    def cursor(self): return SqlClientCursor()
+    def close(self): pass
+def connection(): return SqlClientConnection()
 def ident(n): return "["+n.replace("]","]]")+"]"
 if connect:
     try:
@@ -31,7 +112,7 @@ if connect:
             st.session_state.tables=[tuple(row) for row in c.cursor().execute("SELECT TABLE_SCHEMA,TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY 1,2").fetchall()]
         st.sidebar.success("Connected (SELECT-only application; verify account permissions)")
     except Exception as e:
-        st.sidebar.error("Connection failed: "+type(e).__name__+" | SQLSTATE: "+str(e.args[0] if e.args else "unknown"))
+        st.sidebar.error("Connection failed: "+type(e).__name__+" | "+str(e.args[0] if e.args else "unknown"))
         st.session_state.pop("tables",None)
 if not st.session_state.get("tables"):
     st.info("Enter local database credentials and connect to discover tables.")
@@ -67,7 +148,7 @@ def dashboard():
                 st.error("Safety limit exceeded; use a narrower query or server-side aggregation."); return
         df=pd.DataFrame(rows,columns=wanted)
     except Exception as e:
-        st.error("Query failed: "+type(e).__name__+" | SQLSTATE: "+str(e.args[0] if e.args else "unknown")); return
+        st.error("Query failed: "+type(e).__name__+" | "+str(e.args[0] if e.args else "unknown")); return
     def events(stage):
         col=active.get(stage)
         if not col: return pd.DataFrame()
