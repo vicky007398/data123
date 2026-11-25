@@ -95,8 +95,17 @@ st.markdown("""<style>
 [data-testid=stMarkdownContainer] .hour-table .h-0{background:#eff6ff;color:#1d4ed8}
 [data-testid=stMarkdownContainer] .hour-table .h-1{background:#ecfdf5;color:#0f766e}
 [data-testid=stMarkdownContainer] .hour-table .h-2{background:#f5f3ff;color:#7c3aed}
+
+[data-testid=stMarkdownContainer] .power-wrap{width:100%;overflow-x:auto}
+[data-testid=stMarkdownContainer] table.power-table{display:table;width:100%;min-width:570px;table-layout:fixed;border-collapse:collapse;margin:0;color:#172b45;font-size:11px}
+[data-testid=stMarkdownContainer] .power-table th,[data-testid=stMarkdownContainer] .power-table td{border:1px solid #b9c7d8;padding:4px 5px;text-align:center;white-space:nowrap}
+[data-testid=stMarkdownContainer] .power-table thead th{background:#123052;color:white}
+[data-testid=stMarkdownContainer] .power-table tbody th{text-align:left;color:white}
+.power-r0{background:#eff6ff}.power-r1{background:#ecfdf5}.power-r2{background:#f5f3ff}.power-r3{background:#e2e8f0;font-weight:700}
+.power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
+.power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.9
+# Data123 V4.0
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -260,7 +269,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.9</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.0</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -353,14 +362,21 @@ def dashboard():
             val=(f"{iv[p].mean():.3f}" if p=="CTM" else f"{iv[p].mean():.2f}")+units[p] if iv[p].notna().any() else "N/A"
             iv_cards.append(f'<div class="mini-kpi"><small>{escape(label)}</small><b>{escape(val)}</b></div>')
         st.markdown('<div class="mini-kpis">'+''.join(iv_cards)+'</div>',unsafe_allow_html=True)
-        p=st.sidebar.selectbox("24-hour trend parameter",params)
-        trend=iv.groupby("hour")[p].mean().reindex(range(24))
-        trend_col, power_col=st.columns(2)
-        trend_col.plotly_chart(compact(px.line(x=hours,y=trend,markers=True,title=p+" | 24-hour trend",labels={"x":"Hour","y":p},color_discrete_sequence=["#0f9488"])),use_container_width=True,config={"displayModeBar":False})
         if "PMAX" in iv:
             labels=["<600","600–605","605–610","610–615","615–620","620–625","625–630",">=630"]
             bins=pd.cut(iv["PMAX"],[-float("inf"),600,605,610,615,620,625,630,float("inf")],right=False,labels=labels)
-            power_col.plotly_chart(compact(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"},color_discrete_sequence=["#7c3aed"])),use_container_width=True,config={"displayModeBar":False})
+            distribution=pd.crosstab(bins,iv["shift"]).reindex(index=labels,columns=["A","B","C"],fill_value=0)
+            distribution["Total"]=distribution.sum(axis=1)
+            future=[now < start+timedelta(hours=i*8) for i in range(3)]
+            rows=[]
+            for label in ["A Shift","B Shift","C Shift","Total"]:
+                i=["A Shift","B Shift","C Shift","Total"].index(label)
+                counts=distribution.iloc[:,i]
+                cells="".join(f'<td>{("—" if i<3 and future[i] else format(int(v),","))}</td>' for v in counts)
+                total="—" if i<3 and future[i] else f"{int(counts.sum()):,}"
+                rows.append(f'<tr class="power-r{i}"><th scope="row">{label}</th>{cells}<td class="power-total">{total}</td></tr>')
+            header="".join(f'<th>{escape(label)}</th>' for label in labels)
+            st.markdown('<div class="el-title">Live Power Distribution | Modules by wattage</div><div class="power-wrap"><table class="power-table"><thead><tr><th>Shift</th>'+header+'<th>Total</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
     with st.expander("Shift summary",expanded=False):
         st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
     with st.expander("Module data | selected production day",expanded=False):
