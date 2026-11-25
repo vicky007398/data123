@@ -10,7 +10,8 @@ import plotly.express as px
 from datetime import date, datetime, time, timedelta
 
 st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initial_sidebar_state="collapsed")
-st.markdown("<style>.block-container{padding-top:2rem;padding-bottom:1rem}</style>",unsafe_allow_html=True)
+st.markdown("<style>.block-container{padding-top:3.75rem;padding-bottom:1rem}</style>",unsafe_allow_html=True)
+st.caption("Data123 V2.1 | EL KPI monitor")
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -179,7 +180,10 @@ def dashboard():
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
-            st.warning(stage+" status unavailable"); continue
+            if stage in panels:
+                panels[stage].markdown("**"+stage+" rejection**")
+                panels[stage].warning("Inspection status or timestamp unavailable")
+            continue
         codes=sorted(d[level].dropna().astype(str).str.strip().str.upper().unique().tolist())
         codes=[x for x in codes if x]
         # A single server-side query returns grouped first-event statuses for MTD.
