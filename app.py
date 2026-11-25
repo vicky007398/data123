@@ -71,8 +71,17 @@ st.markdown("""<style>
 [data-testid=stMarkdownContainer] .shift-table .defect-heading th{background:#dbe6f3;color:#123052;text-align:left}
 [data-testid=stMarkdownContainer] .shift-table .el-ok{color:#15803d}
 [data-testid=stMarkdownContainer] .shift-table .el-ng{color:#b91c1c}
+
+.hour-board{display:grid;gap:4px;padding-bottom:5px;min-width:0}
+.hour-row{display:grid;grid-template-columns:24px repeat(8,minmax(0,1fr));gap:3px;align-items:stretch;--shift:#2563eb;--tint:#eff6ff}
+.hour-b{--shift:#0f766e;--tint:#ecfdf5}.hour-c{--shift:#7c3aed;--tint:#f5f3ff}
+.hour-shift{display:flex;align-items:center;justify-content:center;background:var(--shift);color:white;font-size:12px;font-weight:700;border-radius:4px}
+.hour-cell{min-width:0;border:1px solid var(--shift);border-radius:4px;background:var(--tint);color:#172b45;text-align:center;overflow-wrap:anywhere}
+.hour-cell small{display:block;font-size:10px;line-height:1.3;background:var(--shift);color:white;padding:2px 0}
+.hour-cell b{display:block;font-size:14px;line-height:1.35;padding:3px 0}
+@media(max-width:650px){.hour-row{grid-template-columns:20px repeat(8,minmax(0,1fr));gap:2px}.hour-cell small{font-size:8px}.hour-cell b{font-size:11px}}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.3
+# Data123 V3.4
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -236,7 +245,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.3</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.4</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -284,15 +293,6 @@ def dashboard():
         for j in range(5):
             rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
         panels[stage].markdown('<div class="el-title">'+escape(stage)+'</div><div class="shift-table-wrap"><table class="shift-table"><colgroup><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"></colgroup><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
-    lead_text="N/A"
-    if "PRE_EL_TIME" in fqc:
-        pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
-        if getattr(pre.dt,"tz",None) is not None: pre=pre.dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
-        lead=(fqc["_time"]-pre).dt.total_seconds()/3600
-        lead=lead.where(lead>=0)
-        if lead.notna().any(): lead_text=f"{lead.mean():.2f} h"
-    overview=[("FQC production",f"{len(fqc):,}" if "FQC" in active else "N/A"),("Lamination",f"{len(data['Lamination']):,}" if "Lamination" in active else "N/A"),("Sun simulator",f"{len(data['Sun simulator']):,}" if "Sun simulator" in active else "N/A"),("Pre-EL to FQC",lead_text)]
-    st.markdown('<div class="mini-kpis">'+''.join(f'<div class="mini-kpi"><small>{escape(k)}</small><b>{escape(v)}</b></div>' for k,v in overview)+'</div>',unsafe_allow_html=True)
     def compact(fig,height=165):
         fig.update_layout(height=height,margin=dict(l=36,r=12,t=34,b=27),font=dict(size=10),title_font_size=12,title_y=0.96,xaxis_title=None,yaxis_title=None)
         fig.update_xaxes(tickangle=0,nticks=8,automargin=True)
@@ -305,9 +305,15 @@ def dashboard():
         d=data[stage]
         if stage not in active: area.warning(stage+" timestamp unavailable"); continue
         counts=d.groupby("hour").size().reindex(range(24),fill_value=0)
-        fig=px.bar(x=hours,y=counts,title=stage+" hourly count"+(" (entry)" if stage=="Lamination" else ""),labels={"x":"Hour","y":"Unique modules"})
-        fig.update_traces(marker_color=["#2563eb"]*8+["#0f766e"]*8+["#7c3aed"]*8,marker_line_width=0)
-        area.plotly_chart(compact(fig),use_container_width=True,config={"displayModeBar":False})
+        hour_rows=[]
+        for shift_index,shift_name in enumerate(["A","B","C"]):
+            cells=[]
+            for h in range(shift_index*8,(shift_index+1)*8):
+                value="—" if now < start+timedelta(hours=h) else f"{int(counts.loc[h]):,}"
+                cells.append(f'<div class="hour-cell"><small>{hours[h]}</small><b>{value}</b></div>')
+            hour_rows.append(f'<div class="hour-row hour-{shift_name.lower()}"><div class="hour-shift">{shift_name}</div>'+''.join(cells)+'</div>')
+        heading="Lamination | Hourly production (entry)" if stage=="Lamination" else "Sun simulator | Hourly production"
+        area.markdown('<div class="el-title">'+escape(heading)+'</div><div class="hour-board">'+''.join(hour_rows)+'</div>',unsafe_allow_html=True)
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
