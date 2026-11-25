@@ -62,17 +62,17 @@ st.markdown("""<style>
     
 
 [data-testid=stMarkdownContainer] .shift-table-wrap{width:100%;overflow-x:auto;margin:0 0 5px}
-[data-testid=stMarkdownContainer] table.shift-table{display:table;width:100%;min-width:660px;table-layout:fixed;border-collapse:collapse;margin:0;font-size:11px;line-height:1.25;color:#172b45;background:#fff}
-[data-testid=stMarkdownContainer] .shift-table th,[data-testid=stMarkdownContainer] .shift-table td{border:1px solid #b9c7d8;padding:3px 7px;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
-[data-testid=stMarkdownContainer] .shift-table thead th{color:white;text-align:center;font-weight:700;font-size:12px}
-[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n){width:11%;text-align:right;font-weight:700}
-[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n+1){width:22.33%}
+[data-testid=stMarkdownContainer] table.shift-table{display:table;width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;margin:0;font-size:10px;line-height:1.25;color:#172b45;background:#fff}
+[data-testid=stMarkdownContainer] .shift-table th,[data-testid=stMarkdownContainer] .shift-table td{border:1px solid #b9c7d8;padding:3px 4px;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
+[data-testid=stMarkdownContainer] .shift-table thead th{color:white;text-align:center;font-weight:700;font-size:10px}
+[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n){text-align:right;font-weight:700}
+[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n+1){}
 [data-testid=stMarkdownContainer] .shift-table tbody tr:nth-child(even){background:#f1f5f9}
 [data-testid=stMarkdownContainer] .shift-table .defect-heading th{background:#dbe6f3;color:#123052;text-align:left}
 [data-testid=stMarkdownContainer] .shift-table .el-ok{color:#15803d}
 [data-testid=stMarkdownContainer] .shift-table .el-ng{color:#b91c1c}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.2
+# Data123 V3.3
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -236,13 +236,15 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.2</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.3</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
+    pre_panel, final_panel = st.columns(2, gap="small")
+    panels={"Pre-EL":pre_panel,"Final EL":final_panel}
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
-            st.warning(stage+" inspection status or timestamp unavailable")
+            panels[stage].warning(stage+" inspection status or timestamp unavailable")
             continue
         status=d[level].astype("string").str.strip().str.upper()
         valid=status.isin(["OK","NG"])
@@ -281,7 +283,7 @@ def dashboard():
         rows.append("<tr class='defect-heading'>"+("<th>Top 5 Defects</th><th>Qty</th>"*3)+"</tr>")
         for j in range(5):
             rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
-        st.markdown('<div class="el-title">'+escape(stage)+'</div><div class="shift-table-wrap"><table class="shift-table"><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
+        panels[stage].markdown('<div class="el-title">'+escape(stage)+'</div><div class="shift-table-wrap"><table class="shift-table"><colgroup><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"></colgroup><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
     lead_text="N/A"
     if "PRE_EL_TIME" in fqc:
         pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
