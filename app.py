@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import subprocess
 import json
+import os
 from pathlib import Path
 from contextlib import closing
 import plotly.express as px
@@ -15,16 +16,17 @@ try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
 except (OSError, ValueError):
     pass
-with st.sidebar:
-    st.header("Database connection")
-    host=st.text_input("Host", value=defaults.get("host",""))
-    port=st.number_input("Port",1,65535,int(defaults.get("port",1433)))
-    db=st.text_input("Database", value=defaults.get("database",""))
-    user=st.text_input("Read-only username", value=defaults.get("username",""))
-    password=st.text_input("Password",type="password")
-    st.caption("Windows .NET SqlClient — no ODBC driver needed")
-    trust=st.checkbox("Trust server certificate (only if approved by IT)",False)
-    connect=st.button("Connect / discover tables")
+host=defaults.get("host","")
+port=int(defaults.get("port",1433))
+db=defaults.get("database","")
+user=defaults.get("username","")
+password=os.environ.get("DATA123_DB_PASSWORD") or defaults.get("password","")
+trust=defaults.get("trust_server_certificate",False) is True
+schema=defaults.get("schema","")
+table=defaults.get("table","")
+if not all((host,db,user,password,schema,table)):
+    st.error("Local connection configuration is incomplete. Set connection.local.json and the local password before starting Data123.")
+    st.stop()
 PS_QUERY = r"""
 $ErrorActionPreference = 'Stop'
 try {
@@ -112,20 +114,7 @@ class SqlClientConnection:
     def close(self): pass
 def connection(): return SqlClientConnection()
 def ident(n): return "["+n.replace("]","]]")+"]"
-if connect:
-    try:
-        with closing(connection()) as c:
-            st.session_state.tables=[tuple(row) for row in c.cursor().execute("SELECT TABLE_SCHEMA,TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY 1,2").fetchall()]
-        st.sidebar.success("Connected (SELECT-only application; verify account permissions)")
-    except Exception as e:
-        st.sidebar.error("Connection failed: "+type(e).__name__+" | "+str(e.args[0] if e.args else "unknown"))
-        st.session_state.pop("tables",None)
-if not st.session_state.get("tables"):
-    st.info("Enter local database credentials and connect to discover tables.")
-    st.stop()
-preferred=(defaults.get("schema",""),defaults.get("table",""))
-tables=st.session_state.tables
-schema,table=st.sidebar.selectbox("MES table",tables,index=tables.index(preferred) if preferred in tables else 0,format_func=lambda x: ".".join(x))
+st.sidebar.caption("Automatic MES connection | SELECT-only")
 day=st.sidebar.date_input("Production day",date.today())
 start=datetime.combine(day,time(6))
 end=start+timedelta(days=1)
@@ -155,6 +144,7 @@ def dashboard():
             if len(rows)>100000:
                 st.error("Safety limit exceeded; use a narrower query or server-side aggregation."); return
         df=pd.DataFrame(rows,columns=wanted)
+        st.caption("MES connected | Data retrieved successfully")
     except Exception as e:
         st.error("Query failed: "+type(e).__name__+" | "+str(e.args[0] if e.args else "unknown")); return
     def events(stage):
