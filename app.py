@@ -72,7 +72,7 @@ st.markdown("""<style>
 [data-testid=stMarkdownContainer] .shift-table .el-ok{color:#15803d}
 [data-testid=stMarkdownContainer] .shift-table .el-ng{color:#b91c1c}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.1
+# Data123 V3.2
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -194,14 +194,14 @@ def dashboard():
             cols=c.cursor().execute("SELECT COLUMN_NAME,DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",schema,table).fetchall()
             lookup={n.upper():n for n,t in cols}
             types={n.upper():t for n,t in cols}
-            stages={"Lamination":"LAM_DATE_IN","Sun simulator":"IV_TIME","FQC":"FQC_TIME","Pre-EL":"PRE_EL_TIME","Mid-EL":"MID_EL_TIME","Final EL":"EL_TIME"}
-            levels={"Pre-EL":"PRE_EL_LEVEL","Mid-EL":"MID_EL_LEVEL","Final EL":"EL_LEVEL"}
+            stages={"Lamination":"LAM_DATE_IN","Sun simulator":"IV_TIME","FQC":"FQC_TIME","Pre-EL":"PRE_EL_TIME","Final EL":"EL_TIME"}
+            levels={"Pre-EL":"PRE_EL_LEVEL","Final EL":"EL_LEVEL"}
             if "LOT_NUMBER" not in lookup:
                 st.error("LOT_NUMBER not found"); return
             active={k:v for k,v in stages.items() if v in lookup and types[v] in ("datetime","datetime2","smalldatetime","datetimeoffset","date")}
             if not active:
                 st.error("No supported timestamp columns found. Text dates need explicit parsing."); return
-            defects={"Pre-EL":"PRE_EL_DEFECT","Mid-EL":"MID_EL_DEFECT","Final EL":"EL_DEFECT"}
+            defects={"Pre-EL":"PRE_EL_DEFECT","Final EL":"EL_DEFECT"}
             wanted=list(dict.fromkeys(["LOT_NUMBER",*active.values(),*levels.values(),*defects.values(),"PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE","FQC_LEVEL"]))
             wanted=[x for x in wanted if x in lookup]
             predicates=[f"({ident(lookup[v])} >= ? AND {ident(lookup[v])} < ?)" for v in active.values()]
@@ -236,7 +236,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.1</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.2</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     for stage,level in levels.items():
@@ -267,12 +267,12 @@ def dashboard():
                         for entry in str(raw).split(";"):
                             name=" ".join(entry.split(":",1)[0].strip().split()).casefold()
                             if name: names.add(name)
-                    counts.update(names or {"unspecified"})
+                    counts.update(names if stage=="Pre-EL" else (names or {"unspecified"}))
             ranked=sorted(counts.items(),key=lambda item:(-item[1],item[0]))[:5]
             if not future and ng and defect_col not in d.columns:
                 ranked=[("Defect column unavailable","—")]
             shift_values.append(values)
-            shift_defects.append([(escape(name.title()),f"{qty:,}" if isinstance(qty,int) else str(qty)) for name,qty in ranked]+[("—","—")]*(5-len(ranked)))
+            shift_defects.append([(escape(name.title()),f"{qty:,}" if isinstance(qty,int) else str(qty)) for name,qty in ranked]+([("","")] if stage=="Pre-EL" and not future else [("—","—")])*(5-len(ranked)))
             headers.append(f'<th colspan="2" class="shift-{shift.lower()}">{shift} SHIFT · {timing}</th>')
         rows=[]
         for j,label in enumerate(["Total Modules","OK Modules","NG Modules","NG %"]):
