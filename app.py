@@ -13,18 +13,21 @@ st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initi
 st.markdown("""<style>
 [data-testid=stHeader]{height:1.8rem;background:transparent}
 [data-testid=stToolbar]{display:none}
-.block-container{padding-top:2.4rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
-[data-testid=stAppViewContainer] .main .block-container{padding-top:1.8rem!important}
-[data-testid=stMainBlockContainer] > [data-testid=stVerticalBlock]{gap:.75rem}
+.block-container{padding-top:.65rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
+[data-testid=stAppViewContainer] .main .block-container{padding-top:.65rem!important}
+[data-testid=stMainBlockContainer] > [data-testid=stVerticalBlock]{gap:.4rem}
+[data-testid=stMainBlockContainer] > [data-testid=stVerticalBlock] > [data-testid=stElementContainer]:has(style):not(:has(.live-head)){display:none}
+[data-testid=stHeader]{height:1.4rem}
+[data-testid=stMarkdownContainer] .el-board{row-gap:5px}
 [data-testid=stMarkdownContainer] p{margin-bottom:0}
 [data-testid=stMarkdownContainer] .live-head,[data-testid=stMarkdownContainer] .shift-strip,[data-testid=stMarkdownContainer] .mini-kpis,[data-testid=stMarkdownContainer] .el-board{position:relative;display:flow-root;box-sizing:border-box}
 [data-testid=stMarkdownContainer] .shift-strip,[data-testid=stMarkdownContainer] .el-board{display:grid}
 [data-testid=stMarkdownContainer] .mini-kpis,[data-testid=stMarkdownContainer] .live-head{display:flex}
-[data-testid=stMarkdownContainer] .live-head{margin-bottom:8px}
-[data-testid=stMarkdownContainer] .shift-strip{margin-bottom:8px}
-[data-testid=stMarkdownContainer] .el-board{padding-bottom:12px}
-[data-testid=stMarkdownContainer] .mini-kpis{padding-bottom:12px}
-[data-testid=stPlotlyChart]{margin-top:4px}
+[data-testid=stMarkdownContainer] .live-head{margin-bottom:4px}
+[data-testid=stMarkdownContainer] .shift-strip{margin-bottom:3px}
+[data-testid=stMarkdownContainer] .el-board{padding-bottom:5px}
+[data-testid=stMarkdownContainer] .mini-kpis{padding-bottom:5px}
+[data-testid=stPlotlyChart]{margin-top:0}
 [data-testid=stMarkdownContainer] .el-kpi,[data-testid=stMarkdownContainer] .mini-kpi{height:auto;line-height:1.35;align-self:stretch}
 [data-testid=stMetricValue]{font-size:1.15rem!important}
 [data-testid=stMetricLabel] p{font-size:.72rem!important}
@@ -34,8 +37,14 @@ st.markdown("""<style>
 .live-head strong{font-size:21px;letter-spacing:-.3px}.live-head span{font-size:11px;opacity:.8}
 .mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1 1 82px;min-width:0;box-sizing:border-box;border:1px solid #b9cce0;border-left:4px solid #2563eb;background:#eff6ff;color:#16314f;border-radius:8px;padding:4px 8px}.mini-kpi:nth-child(4n+2){border-left-color:#0f766e;background:#ecfdf5}.mini-kpi:nth-child(4n+3){border-left-color:#7c3aed;background:#f5f3ff}.mini-kpi:nth-child(4n+4){border-left-color:#d97706;background:#fffbeb}
 .mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:clamp(12px,1.05vw,16px);overflow-wrap:anywhere}
+
+    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:2px}
+    .el-kpi{grid-column:span 2;border:1px solid #cbd5e1;border-left:3px solid #2563eb;background:#eff6ff;color:#172b45;border-radius:8px;padding:4px 7px;min-width:0;overflow-wrap:anywhere;box-sizing:border-box}.el-kpi:nth-child(1){background:#fff7ed;border-left-color:#ea580c}.el-kpi:nth-child(2){background:#fef2f2;border-left-color:#dc2626}.el-kpi:nth-child(4){background:#ecfdf5;border-left-color:#0f766e}.el-kpi:nth-child(5){background:#f5f3ff;border-left-color:#7c3aed}
+    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:clamp(13px,1.25vw,17px);font-weight:700;line-height:1.15}
+    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
+    
 </style>""",unsafe_allow_html=True)
-# Data123 V2.5
+# Data123 V2.6
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -191,16 +200,10 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.5</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.6</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
-    st.markdown("""<style>
-    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:2px}
-    .el-kpi{grid-column:span 2;border:1px solid #cbd5e1;border-left:3px solid #2563eb;background:#eff6ff;color:#172b45;border-radius:8px;padding:4px 7px;min-width:0;overflow-wrap:anywhere;box-sizing:border-box}.el-kpi:nth-child(1){background:#fff7ed;border-left-color:#ea580c}.el-kpi:nth-child(2){background:#fef2f2;border-left-color:#dc2626}.el-kpi:nth-child(4){background:#ecfdf5;border-left-color:#0f766e}.el-kpi:nth-child(5){background:#f5f3ff;border-left-color:#7c3aed}
-    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:clamp(13px,1.25vw,17px);font-weight:700;line-height:1.15}
-    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
-    </style>""",unsafe_allow_html=True)
     pre_panel, final_panel = st.columns(2)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
@@ -271,8 +274,8 @@ def dashboard():
         if lead.notna().any(): lead_text=f"{lead.mean():.2f} h"
     overview=[("FQC production",f"{len(fqc):,}" if "FQC" in active else "N/A"),("Lamination",f"{len(data['Lamination']):,}" if "Lamination" in active else "N/A"),("Sun simulator",f"{len(data['Sun simulator']):,}" if "Sun simulator" in active else "N/A"),("Pre-EL to FQC",lead_text)]
     st.markdown('<div class="mini-kpis">'+''.join(f'<div class="mini-kpi"><small>{escape(k)}</small><b>{escape(v)}</b></div>' for k,v in overview)+'</div>',unsafe_allow_html=True)
-    def compact(fig,height=185):
-        fig.update_layout(height=height,margin=dict(l=36,r=12,t=38,b=32),font=dict(size=10),title_font_size=12,title_y=0.96,xaxis_title=None,yaxis_title=None)
+    def compact(fig,height=165):
+        fig.update_layout(height=height,margin=dict(l=36,r=12,t=34,b=27),font=dict(size=10),title_font_size=12,title_y=0.96,xaxis_title=None,yaxis_title=None)
         fig.update_xaxes(tickangle=0,nticks=8,automargin=True)
         fig.update_yaxes(automargin=True,gridcolor='rgba(128,145,165,.16)')
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',showlegend=False)
