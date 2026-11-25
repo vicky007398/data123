@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.1
+# Data123 V4.2
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,7 +269,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.1</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.2</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -374,12 +374,12 @@ def dashboard():
             for i,(label,color) in enumerate(zip(["A Shift","B Shift","C Shift","Total"],["#2563eb","#0f766e","#7c3aed","#123052"])):
                 counts=distribution.iloc[:,i]
                 pending=i<3 and future[i]
-                title=label+" | "+("—" if pending else f"{int(counts.sum()):,}")
+                title=label
                 fig=px.bar(x=labels,y=[None]*len(labels) if pending else counts.tolist(),title=title,labels={"x":"Watts","y":"Modules"})
                 fig.update_traces(marker_color=color,marker_line_width=0,text=["—"]*len(labels) if pending else counts.tolist(),textposition="outside",cliponaxis=False,textfont_size=10)
-                fig=compact(fig,height=195)
-                fig.update_layout(bargap=.08,margin=dict(l=30,r=6,t=34,b=45))
-                fig.update_xaxes(tickmode="array",tickvals=labels,ticktext=labels,tickangle=-45,tickfont_size=8)
+                fig=compact(fig,height=205)
+                fig.update_layout(bargap=.08,margin=dict(l=30,r=8,t=30,b=65))
+                fig.update_xaxes(tickmode="array",tickvals=labels,ticktext=labels,tickangle=-90,tickfont_size=9)
                 fig.update_yaxes(range=[0,ymax*1.22],rangemode="tozero")
                 if pending:
                     fig.add_annotation(text="Shift not started —",xref="paper",yref="paper",x=.5,y=.5,showarrow=False)
