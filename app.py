@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.3
+# Data123 V4.4
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,7 +269,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.3</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.4</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -351,7 +351,7 @@ def dashboard():
         if stage in rej and rej[stage][2]:
             mask,valid,_=rej[stage]; add(stage+" rejection qty",d,mask); add(stage+" rejection %",d,mask,valid)
     iv=data["Sun simulator"]
-    st.markdown("**Sun simulator | Critical parameters**")
+    st.markdown("**Sun Simulator | Critical Parameters (Average Values)**")
     params=[p for p in ["PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE"] if p in iv]
     if params:
         iv_cards=[]
