@@ -20,12 +20,12 @@ st.markdown("""<style>
 [data-testid=stMetricLabel] p{font-size:.72rem!important}
 [data-testid=stMetricValue] > div{white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
 [data-testid=stHeading] h2,[data-testid=stHeading] h3{font-size:1rem!important;padding:0!important}
-.live-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #8292a54d;padding:0 0 4px;margin-bottom:2px}
+.live-head{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center;background:#123052;color:#fff;border-radius:9px;padding:6px 12px;margin-bottom:2px}.shift-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.shift-strip div{border-radius:6px;padding:4px 8px;color:white;font-size:11px;text-align:center;overflow-wrap:anywhere}.shift-a{background:#2563eb}.shift-b{background:#0f766e}.shift-c{background:#7c3aed}
 .live-head strong{font-size:21px;letter-spacing:-.3px}.live-head span{font-size:11px;opacity:.8}
-.mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1;min-width:65px;border:1px solid #8292a54d;border-radius:8px;padding:4px 8px}
-.mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:16px;white-space:nowrap}
+.mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1 1 82px;min-width:0;box-sizing:border-box;border:1px solid #b9cce0;border-left:4px solid #2563eb;background:#eff6ff;color:#16314f;border-radius:8px;padding:4px 8px}.mini-kpi:nth-child(4n+2){border-left-color:#0f766e;background:#ecfdf5}.mini-kpi:nth-child(4n+3){border-left-color:#7c3aed;background:#f5f3ff}.mini-kpi:nth-child(4n+4){border-left-color:#d97706;background:#fffbeb}
+.mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:clamp(12px,1.05vw,16px);overflow-wrap:anywhere}
 </style>""",unsafe_allow_html=True)
-# Data123 V2.3
+# Data123 V2.4
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -181,14 +181,15 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.3</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.4</span></div>',unsafe_allow_html=True)
+    st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
     st.markdown("""<style>
     .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:2px}
-    .el-kpi{grid-column:span 2;border:1px solid #8292a54d;border-radius:8px;padding:4px 7px;min-width:0}
-    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:17px;font-weight:700;line-height:1.15}
-    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px}
+    .el-kpi{grid-column:span 2;border:1px solid #cbd5e1;border-left:3px solid #2563eb;background:#eff6ff;color:#172b45;border-radius:8px;padding:4px 7px;min-width:0;overflow-wrap:anywhere;box-sizing:border-box}.el-kpi:nth-child(1){background:#fff7ed;border-left-color:#ea580c}.el-kpi:nth-child(2){background:#fef2f2;border-left-color:#dc2626}.el-kpi:nth-child(4){background:#ecfdf5;border-left-color:#0f766e}.el-kpi:nth-child(5){background:#f5f3ff;border-left-color:#7c3aed}
+    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:clamp(13px,1.25vw,17px);font-weight:700;line-height:1.15}
+    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
     </style>""",unsafe_allow_html=True)
     pre_panel, final_panel = st.columns(2)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
@@ -262,7 +263,9 @@ def dashboard():
     st.markdown('<div class="mini-kpis">'+''.join(f'<div class="mini-kpi"><small>{escape(k)}</small><b>{escape(v)}</b></div>' for k,v in overview)+'</div>',unsafe_allow_html=True)
     def compact(fig,height=185):
         fig.update_layout(height=height,margin=dict(l=32,r=8,t=29,b=32),font=dict(size=10),title_font_size=12,xaxis_title=None,yaxis_title=None)
-        fig.update_xaxes(tickangle=0,nticks=12)
+        fig.update_xaxes(tickangle=0,nticks=8,automargin=True)
+        fig.update_yaxes(automargin=True,gridcolor='rgba(128,145,165,.16)')
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',showlegend=False)
         return fig
     hours=[f"{(i+6)%24:02d}:00" for i in range(24)]
     a,b=st.columns(2)
@@ -270,7 +273,9 @@ def dashboard():
         d=data[stage]
         if stage not in active: area.warning(stage+" timestamp unavailable"); continue
         counts=d.groupby("hour").size().reindex(range(24),fill_value=0)
-        area.plotly_chart(compact(px.bar(x=hours,y=counts,title=stage+" hourly count"+(" (entry)" if stage=="Lamination" else ""),labels={"x":"Hour","y":"Unique modules"})),use_container_width=True,config={"displayModeBar":False})
+        fig=px.bar(x=hours,y=counts,title=stage+" hourly count"+(" (entry)" if stage=="Lamination" else ""),labels={"x":"Hour","y":"Unique modules"})
+        fig.update_traces(marker_color=["#2563eb"]*8+["#0f766e"]*8+["#7c3aed"]*8,marker_line_width=0)
+        area.plotly_chart(compact(fig),use_container_width=True,config={"displayModeBar":False})
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
@@ -303,11 +308,11 @@ def dashboard():
         p=st.sidebar.selectbox("24-hour trend parameter",params)
         trend=iv.groupby("hour")[p].mean().reindex(range(24))
         trend_col, power_col=st.columns(2)
-        trend_col.plotly_chart(compact(px.line(x=hours,y=trend,markers=True,title=p+" | 24-hour trend",labels={"x":"Hour","y":p})),use_container_width=True,config={"displayModeBar":False})
+        trend_col.plotly_chart(compact(px.line(x=hours,y=trend,markers=True,title=p+" | 24-hour trend",labels={"x":"Hour","y":p},color_discrete_sequence=["#0f9488"])),use_container_width=True,config={"displayModeBar":False})
         if "PMAX" in iv:
             labels=["<600","600–605","605–610","610–615","615–620","620–625","625–630",">=630"]
             bins=pd.cut(iv["PMAX"],[-float("inf"),600,605,610,615,620,625,630,float("inf")],right=False,labels=labels)
-            power_col.plotly_chart(compact(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"})),use_container_width=True,config={"displayModeBar":False})
+            power_col.plotly_chart(compact(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"},color_discrete_sequence=["#7c3aed"])),use_container_width=True,config={"displayModeBar":False})
     with st.expander("Module data | selected production day",expanded=False):
         serial=st.text_input("Filter module serial number")
         view=df[df["LOT_NUMBER"].astype(str).str.contains(serial,regex=False)] if serial else df
