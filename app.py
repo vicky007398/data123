@@ -40,13 +40,21 @@ st.markdown("""<style>
 .mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1 1 82px;min-width:0;box-sizing:border-box;border:1px solid #b9cce0;border-left:4px solid #2563eb;background:#eff6ff;color:#16314f;border-radius:8px;padding:4px 8px}.mini-kpi:nth-child(4n+2){border-left-color:#0f766e;background:#ecfdf5}.mini-kpi:nth-child(4n+3){border-left-color:#7c3aed;background:#f5f3ff}.mini-kpi:nth-child(4n+4){border-left-color:#d97706;background:#fffbeb}
 .mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:clamp(12px,1.05vw,16px);overflow-wrap:anywhere}
 
-    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:2px}
-    .el-kpi{grid-column:span 2;border:1px solid #cbd5e1;border-left:3px solid #2563eb;background:#eff6ff;color:#172b45;border-radius:8px;padding:4px 7px;min-width:0;overflow-wrap:anywhere;box-sizing:border-box}.el-kpi:nth-child(1){background:#fff7ed;border-left-color:#ea580c}.el-kpi:nth-child(2){background:#fef2f2;border-left-color:#dc2626}.el-kpi:nth-child(4){background:#ecfdf5;border-left-color:#0f766e}.el-kpi:nth-child(5){background:#f5f3ff;border-left-color:#7c3aed}
-    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:clamp(13px,1.25vw,17px);font-weight:700;line-height:1.15}
-    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
+
+.el-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:2px}
+.el-kpi{border:1px solid #cbd5e1;border-radius:8px;min-width:0;overflow:hidden;box-sizing:border-box;background:#f8fafc;color:#172b45;padding:0 7px 5px}
+.el-shift{background:#2563eb;color:white;font-weight:700;font-size:12px;padding:4px 6px;margin:0 -7px 3px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px}
+.el-shift small{font-size:9px;font-weight:400}
+.el-kpi:nth-child(2) .el-shift{background:#0f766e}
+.el-kpi:nth-child(3) .el-shift{background:#7c3aed}
+.el-stat{display:flex;align-items:baseline;justify-content:space-between;gap:4px;flex-wrap:wrap;padding:2px 0;font-size:11px;line-height:1.3}
+.el-stat b{font-size:14px;overflow-wrap:anywhere}.el-ok{color:#15803d}.el-ng{color:#b91c1c}
+.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}
+@media(max-width:650px){.el-board{grid-template-columns:1fr}.shift-strip{grid-template-columns:1fr}}
+
     
 </style>""",unsafe_allow_html=True)
-# Data123 V2.8
+# Data123 V2.9
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -209,10 +217,9 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.8</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.9</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
-    month_start=datetime.combine(first_day,time(6))
     pre_panel, final_panel = st.columns(2)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
@@ -222,49 +229,21 @@ def dashboard():
                 panels[stage].markdown("**"+stage+" rejection**")
                 panels[stage].warning("Inspection status or timestamp unavailable")
             continue
-        # A single server-side query returns grouped first-event statuses for MTD.
-        # Use daily unique module counts, consistent with shift totals.
-        mtd={}
-        try:
-            if stage=="Mid-EL":
-                raise LookupError("daily only")
-            ts=ident(lookup[active[stage]])
-            lv=ident(lookup[level])
-            lot=ident(lookup["LOT_NUMBER"])
-            source=ident(schema)+"."+ident(table)
-            q_mtd=("SELECT status, COUNT_BIG(*) FROM (SELECT UPPER(LTRIM(RTRIM(CONVERT(nvarchar(200),"+lv+")))) AS status, "
-                   "ROW_NUMBER() OVER (PARTITION BY "+lot+", CONVERT(date,DATEADD(hour,-6,"+ts+")) ORDER BY "+ts+", CONVERT(nvarchar(200),"+lv+")) AS rn "
-                   "FROM "+source+" WHERE "+ts+">=? AND "+ts+"<? AND "+lot+" IS NOT NULL AND LTRIM(RTRIM(CONVERT(nvarchar(200),"+lot+")))<>'' AND UPPER(LTRIM(RTRIM(CONVERT(nvarchar(200),"+lv+")))) IN ('OK','NG')"
-                   ") AS x WHERE rn=1 AND status IS NOT NULL AND status<>'' GROUP BY status")
-            with closing(connection()) as c:
-                mtd=dict(c.cursor().execute(q_mtd,month_start,end).fetchall())
-        except Exception as e:
-            mtd=None
-            if stage!="Mid-EL": st.warning(stage+" MTD unavailable: "+str(e).replace(password,"[redacted]"))
-        chosen={"NG"}
-        accepted={"OK"}
-        mapped=chosen|accepted
         status=d[level].astype("string").str.strip().str.upper()
-        valid=status.isin(mapped)
-        mask=status.isin(chosen)
-        rej[stage]=(mask,valid,chosen)
+        valid=status.isin(["OK","NG"])
+        mask=status.eq("NG").fillna(False)
+        rej[stage]=(mask,valid,{"NG"})
         if stage=="Mid-EL":
             continue
-        def tile(label,n,total,unknown=0,ready=True):
-            value=f"{100*n/total:.2f}%" if ready and total else "—"
-            details=f"{n:,} NG / {total:,} inspected" if ready else "MTD query unavailable"
-
-            return f'<div class="el-kpi"><div class="el-label">{escape(label)}</div><div class="el-value">{value}</div><div class="el-sub">{escape(details)}</div></div>'
-        ready=True
         tiles=[]
-        if mtd is None:
-            tiles.append(tile("MTD",0,0,ready=False))
-        else:
-            tiles.append(tile("MTD",sum(int(v) for k,v in mtd.items() if k in chosen),sum(int(v) for k,v in mtd.items() if k in mapped),sum(int(v) for k,v in mtd.items() if k not in mapped),ready))
-        for shift in [None,"A","B","C"]:
-            pick=d["shift"].eq(shift) if shift else pd.Series(True,index=d.index)
-            tiles.append(tile("Day total" if shift is None else "Shift "+shift,int((pick&mask).sum()),int((pick&valid).sum()),int((pick&~valid).sum()),ready))
-        panels[stage].markdown('<div class="el-title">'+escape(stage)+' rejection</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
+        for shift,timing in [("A","06:00–14:00"),("B","14:00–22:00"),("C","22:00–06:00")]:
+            pick=d["shift"].eq(shift)
+            ok=int((pick&status.eq("OK").fillna(False)).sum())
+            ng=int((pick&mask).sum())
+            total=ok+ng
+            rate=f"{100*ng/total:.2f}%" if total else "—"
+            tiles.append(f'<div class="el-kpi"><div class="el-shift">{shift} Shift <small>{timing}</small></div><div class="el-stat"><span>Total Tested</span><b>{total:,}</b></div><div class="el-stat"><span>OK</span><b class="el-ok">{ok:,}</b></div><div class="el-stat"><span>NG %</span><b class="el-ng">{rate}</b></div></div>')
+        panels[stage].markdown('<div class="el-title">'+escape(stage)+'</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
     lead_text="N/A"
     if "PRE_EL_TIME" in fqc:
         pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
