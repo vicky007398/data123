@@ -46,7 +46,7 @@ st.markdown("""<style>
     .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
     
 </style>""",unsafe_allow_html=True)
-# Data123 V2.7
+# Data123 V2.8
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -196,18 +196,24 @@ def dashboard():
             d["_time"]=d["_time"].dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
         d=d.dropna(subset=["LOT_NUMBER","_time"])
         d=d[d["LOT_NUMBER"].astype(str).str.strip().ne("")]
-        d=d[(d["_time"]>=start)&(d["_time"]<end)].sort_values("_time").drop_duplicates("LOT_NUMBER",keep="first")
+        d=d[(d["_time"]>=start)&(d["_time"]<end)]
+        level=levels.get(stage)
+        if level in d.columns:
+            d=d[d[level].astype("string").str.strip().str.upper().isin(["OK","NG"])]
+            d["_status_order"]=d[level].astype("string").str.strip().str.upper()
+            d=d.sort_values(["_time","_status_order"]).drop_duplicates("LOT_NUMBER",keep="first").drop(columns="_status_order")
+        else:
+            d=d.sort_values("_time").drop_duplicates("LOT_NUMBER",keep="first")
         d["hour"]=((d["_time"]-start).dt.total_seconds()//3600).astype(int)
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.7</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.8</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
     pre_panel, final_panel = st.columns(2)
-    mapping_panel = st.expander("EL status settings — configure rejection codes", expanded=False)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
         d=data[stage]
@@ -216,8 +222,6 @@ def dashboard():
                 panels[stage].markdown("**"+stage+" rejection**")
                 panels[stage].warning("Inspection status or timestamp unavailable")
             continue
-        codes=sorted(d[level].dropna().astype(str).str.strip().str.upper().unique().tolist())
-        codes=[x for x in codes if x]
         # A single server-side query returns grouped first-event statuses for MTD.
         # Use daily unique module counts, consistent with shift totals.
         mtd={}
@@ -230,23 +234,15 @@ def dashboard():
             source=ident(schema)+"."+ident(table)
             q_mtd=("SELECT status, COUNT_BIG(*) FROM (SELECT UPPER(LTRIM(RTRIM(CONVERT(nvarchar(200),"+lv+")))) AS status, "
                    "ROW_NUMBER() OVER (PARTITION BY "+lot+", CONVERT(date,DATEADD(hour,-6,"+ts+")) ORDER BY "+ts+", CONVERT(nvarchar(200),"+lv+")) AS rn "
-                   "FROM "+source+" WHERE "+ts+">=? AND "+ts+"<? AND "+lot+" IS NOT NULL AND LTRIM(RTRIM(CONVERT(nvarchar(200),"+lot+")))<>''"
+                   "FROM "+source+" WHERE "+ts+">=? AND "+ts+"<? AND "+lot+" IS NOT NULL AND LTRIM(RTRIM(CONVERT(nvarchar(200),"+lot+")))<>'' AND UPPER(LTRIM(RTRIM(CONVERT(nvarchar(200),"+lv+")))) IN ('OK','NG')"
                    ") AS x WHERE rn=1 AND status IS NOT NULL AND status<>'' GROUP BY status")
             with closing(connection()) as c:
                 mtd=dict(c.cursor().execute(q_mtd,month_start,end).fetchall())
         except Exception as e:
             mtd=None
             if stage!="Mid-EL": st.warning(stage+" MTD unavailable: "+str(e).replace(password,"[redacted]"))
-        available=sorted(set(codes)|set(mtd or {}))
-        configured=defaults.get("rejection_codes",{}).get(stage,[])
-        configured=[str(x).strip().upper() for x in configured]
-        with mapping_panel:
-            st.markdown("**"+stage+" status mapping**")
-            chosen=st.multiselect("Rejection codes",available,default=[x for x in configured if x in available],key=stage+"_codes")
-            accepted=st.multiselect("Accepted / other non-rejection codes",available,default=[x for x in available if x=="OK" and x not in chosen],key=stage+"_accepted")
-            st.caption("Confirm codes against MES. Unmapped statuses are excluded.")
-        chosen=set(chosen)
-        accepted=set(accepted)-chosen
+        chosen={"NG"}
+        accepted={"OK"}
         mapped=chosen|accepted
         status=d[level].astype("string").str.strip().str.upper()
         valid=status.isin(mapped)
@@ -256,10 +252,10 @@ def dashboard():
             continue
         def tile(label,n,total,unknown=0,ready=True):
             value=f"{100*n/total:.2f}%" if ready and total else "—"
-            details=f"{n:,} rejected / {total:,} mapped" if ready else "Confirm status mapping"
-            if ready and unknown: details+=f" · {unknown:,} unmapped"
+            details=f"{n:,} NG / {total:,} inspected" if ready else "MTD query unavailable"
+
             return f'<div class="el-kpi"><div class="el-label">{escape(label)}</div><div class="el-value">{value}</div><div class="el-sub">{escape(details)}</div></div>'
-        ready=bool(chosen) and bool(accepted)
+        ready=True
         tiles=[]
         if mtd is None:
             tiles.append(tile("MTD",0,0,ready=False))
