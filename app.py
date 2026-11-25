@@ -13,9 +13,19 @@ st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initi
 st.markdown("""<style>
 [data-testid=stHeader]{height:1.8rem;background:transparent}
 [data-testid=stToolbar]{display:none}
-.block-container{padding-top:1.8rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
+.block-container{padding-top:2.4rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
 [data-testid=stAppViewContainer] .main .block-container{padding-top:1.8rem!important}
-[data-testid=stVerticalBlock]{gap:.35rem}
+[data-testid=stMainBlockContainer] > [data-testid=stVerticalBlock]{gap:.75rem}
+[data-testid=stMarkdownContainer] p{margin-bottom:0}
+[data-testid=stMarkdownContainer] .live-head,[data-testid=stMarkdownContainer] .shift-strip,[data-testid=stMarkdownContainer] .mini-kpis,[data-testid=stMarkdownContainer] .el-board{position:relative;display:flow-root;box-sizing:border-box}
+[data-testid=stMarkdownContainer] .shift-strip,[data-testid=stMarkdownContainer] .el-board{display:grid}
+[data-testid=stMarkdownContainer] .mini-kpis,[data-testid=stMarkdownContainer] .live-head{display:flex}
+[data-testid=stMarkdownContainer] .live-head{margin-bottom:8px}
+[data-testid=stMarkdownContainer] .shift-strip{margin-bottom:8px}
+[data-testid=stMarkdownContainer] .el-board{padding-bottom:12px}
+[data-testid=stMarkdownContainer] .mini-kpis{padding-bottom:12px}
+[data-testid=stPlotlyChart]{margin-top:4px}
+[data-testid=stMarkdownContainer] .el-kpi,[data-testid=stMarkdownContainer] .mini-kpi{height:auto;line-height:1.35;align-self:stretch}
 [data-testid=stMetricValue]{font-size:1.15rem!important}
 [data-testid=stMetricLabel] p{font-size:.72rem!important}
 [data-testid=stMetricValue] > div{white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
@@ -25,7 +35,7 @@ st.markdown("""<style>
 .mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1 1 82px;min-width:0;box-sizing:border-box;border:1px solid #b9cce0;border-left:4px solid #2563eb;background:#eff6ff;color:#16314f;border-radius:8px;padding:4px 8px}.mini-kpi:nth-child(4n+2){border-left-color:#0f766e;background:#ecfdf5}.mini-kpi:nth-child(4n+3){border-left-color:#7c3aed;background:#f5f3ff}.mini-kpi:nth-child(4n+4){border-left-color:#d97706;background:#fffbeb}
 .mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:clamp(12px,1.05vw,16px);overflow-wrap:anywhere}
 </style>""",unsafe_allow_html=True)
-# Data123 V2.4
+# Data123 V2.5
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -181,7 +191,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.4</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.5</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
@@ -262,7 +272,7 @@ def dashboard():
     overview=[("FQC production",f"{len(fqc):,}" if "FQC" in active else "N/A"),("Lamination",f"{len(data['Lamination']):,}" if "Lamination" in active else "N/A"),("Sun simulator",f"{len(data['Sun simulator']):,}" if "Sun simulator" in active else "N/A"),("Pre-EL to FQC",lead_text)]
     st.markdown('<div class="mini-kpis">'+''.join(f'<div class="mini-kpi"><small>{escape(k)}</small><b>{escape(v)}</b></div>' for k,v in overview)+'</div>',unsafe_allow_html=True)
     def compact(fig,height=185):
-        fig.update_layout(height=height,margin=dict(l=32,r=8,t=29,b=32),font=dict(size=10),title_font_size=12,xaxis_title=None,yaxis_title=None)
+        fig.update_layout(height=height,margin=dict(l=36,r=12,t=38,b=32),font=dict(size=10),title_font_size=12,title_y=0.96,xaxis_title=None,yaxis_title=None)
         fig.update_xaxes(tickangle=0,nticks=8,automargin=True)
         fig.update_yaxes(automargin=True,gridcolor='rgba(128,145,165,.16)')
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',showlegend=False)
@@ -291,8 +301,6 @@ def dashboard():
         add(stage,d)
         if stage in rej and rej[stage][2]:
             mask,valid,_=rej[stage]; add(stage+" rejection qty",d,mask); add(stage+" rejection %",d,mask,valid)
-    with st.expander("Shift summary",expanded=False):
-        st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
     iv=data["Sun simulator"]
     st.markdown("**Sun simulator | Critical parameters**")
     params=[p for p in ["PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE"] if p in iv]
@@ -313,6 +321,8 @@ def dashboard():
             labels=["<600","600–605","605–610","610–615","615–620","620–625","625–630",">=630"]
             bins=pd.cut(iv["PMAX"],[-float("inf"),600,605,610,615,620,625,630,float("inf")],right=False,labels=labels)
             power_col.plotly_chart(compact(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"},color_discrete_sequence=["#7c3aed"])),use_container_width=True,config={"displayModeBar":False})
+    with st.expander("Shift summary",expanded=False):
+        st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
     with st.expander("Module data | selected production day",expanded=False):
         serial=st.text_input("Filter module serial number")
         view=df[df["LOT_NUMBER"].astype(str).str.contains(serial,regex=False)] if serial else df
