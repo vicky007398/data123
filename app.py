@@ -10,8 +10,8 @@ import plotly.express as px
 from datetime import date, datetime, time, timedelta
 
 st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initial_sidebar_state="collapsed")
-st.markdown("<style>.block-container{padding-top:3.75rem;padding-bottom:1rem}</style>",unsafe_allow_html=True)
-st.caption("Data123 V2.1 | EL KPI monitor")
+st.markdown("<style>[data-testid=stHeader]{height:2rem;background:transparent}[data-testid=stToolbar]{display:none}.block-container{padding-top:2.1rem!important;padding-bottom:1rem}[data-testid=stAppViewContainer] .main .block-container{padding-top:2.1rem!important}</style>",unsafe_allow_html=True)
+# Data123 V2.2
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
