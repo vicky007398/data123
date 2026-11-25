@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import subprocess
 import json
+from pathlib import Path
 from contextlib import closing
 import plotly.express as px
 from datetime import date, datetime, time, timedelta
@@ -9,12 +10,17 @@ from datetime import date, datetime, time, timedelta
 st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide")
 st.title("Data123 | MES Production Intelligence")
 st.caption("Read-only internal MES analytics")
+defaults = {}
+try:
+    defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    pass
 with st.sidebar:
     st.header("Database connection")
-    host=st.text_input("Host")
-    port=st.number_input("Port",1,65535,1433)
-    db=st.text_input("Database")
-    user=st.text_input("Read-only username")
+    host=st.text_input("Host", value=defaults.get("host",""))
+    port=st.number_input("Port",1,65535,int(defaults.get("port",1433)))
+    db=st.text_input("Database", value=defaults.get("database",""))
+    user=st.text_input("Read-only username", value=defaults.get("username",""))
     password=st.text_input("Password",type="password")
     st.caption("Windows .NET SqlClient — no ODBC driver needed")
     trust=st.checkbox("Trust server certificate (only if approved by IT)",False)
@@ -117,7 +123,9 @@ if connect:
 if not st.session_state.get("tables"):
     st.info("Enter local database credentials and connect to discover tables.")
     st.stop()
-schema,table=st.sidebar.selectbox("MES table",st.session_state.tables,format_func=lambda x: ".".join(x))
+preferred=(defaults.get("schema",""),defaults.get("table",""))
+tables=st.session_state.tables
+schema,table=st.sidebar.selectbox("MES table",tables,index=tables.index(preferred) if preferred in tables else 0,format_func=lambda x: ".".join(x))
 day=st.sidebar.date_input("Production day",date.today())
 start=datetime.combine(day,time(6))
 end=start+timedelta(days=1)
