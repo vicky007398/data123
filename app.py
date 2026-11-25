@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.0
+# Data123 V4.1
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,7 +269,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.0</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.1</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -368,15 +368,22 @@ def dashboard():
             distribution=pd.crosstab(bins,iv["shift"]).reindex(index=labels,columns=["A","B","C"],fill_value=0)
             distribution["Total"]=distribution.sum(axis=1)
             future=[now < start+timedelta(hours=i*8) for i in range(3)]
-            rows=[]
-            for label in ["A Shift","B Shift","C Shift","Total"]:
-                i=["A Shift","B Shift","C Shift","Total"].index(label)
+            st.markdown('<div class="el-title">Live Power Distribution | Modules by wattage</div>',unsafe_allow_html=True)
+            areas=st.columns(4,gap="small")
+            ymax=max(1,int(distribution.to_numpy().max()))
+            for i,(label,color) in enumerate(zip(["A Shift","B Shift","C Shift","Total"],["#2563eb","#0f766e","#7c3aed","#123052"])):
                 counts=distribution.iloc[:,i]
-                cells="".join(f'<td>{("—" if i<3 and future[i] else format(int(v),","))}</td>' for v in counts)
-                total="—" if i<3 and future[i] else f"{int(counts.sum()):,}"
-                rows.append(f'<tr class="power-r{i}"><th scope="row">{label}</th>{cells}<td class="power-total">{total}</td></tr>')
-            header="".join(f'<th>{escape(label)}</th>' for label in labels)
-            st.markdown('<div class="el-title">Live Power Distribution | Modules by wattage</div><div class="power-wrap"><table class="power-table"><thead><tr><th>Shift</th>'+header+'<th>Total</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
+                pending=i<3 and future[i]
+                title=label+" | "+("—" if pending else f"{int(counts.sum()):,}")
+                fig=px.bar(x=labels,y=[None]*len(labels) if pending else counts.tolist(),title=title,labels={"x":"Watts","y":"Modules"})
+                fig.update_traces(marker_color=color,marker_line_width=0,text=["—"]*len(labels) if pending else counts.tolist(),textposition="outside",cliponaxis=False,textfont_size=10)
+                fig=compact(fig,height=195)
+                fig.update_layout(bargap=.08,margin=dict(l=30,r=6,t=34,b=45))
+                fig.update_xaxes(tickmode="array",tickvals=labels,ticktext=labels,tickangle=-45,tickfont_size=8)
+                fig.update_yaxes(range=[0,ymax*1.22],rangemode="tozero")
+                if pending:
+                    fig.add_annotation(text="Shift not started —",xref="paper",yref="paper",x=.5,y=.5,showarrow=False)
+                areas[i].plotly_chart(fig,use_container_width=True,config={"displayModeBar":False},key=f"power_hist_{i}")
     with st.expander("Shift summary",expanded=False):
         st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
     with st.expander("Module data | selected production day",expanded=False):
