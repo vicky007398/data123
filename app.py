@@ -12,7 +12,9 @@ from datetime import date, datetime, time, timedelta
 st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""<style>
 [data-testid=stHeader]{height:1.8rem;background:transparent}
-[data-testid=stToolbar]{display:none}
+[data-testid=stToolbar]{visibility:visible}
+[data-testid=stDeployButton]{display:none}
+[data-testid=stSidebarCollapsedControl],[data-testid=collapsedControl]{visibility:visible!important;display:flex!important}
 .block-container{padding-top:.65rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
 [data-testid=stAppViewContainer] .main .block-container{padding-top:.65rem!important}
 [data-testid=stMainBlockContainer] > [data-testid=stVerticalBlock]{gap:.4rem}
@@ -44,7 +46,7 @@ st.markdown("""<style>
     .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}.el-sub{overflow-wrap:anywhere}@media(max-width:650px){.el-board{grid-template-columns:repeat(2,minmax(0,1fr))}.el-kpi,.el-kpi:nth-child(-n+2){grid-column:span 1}.shift-strip{grid-template-columns:1fr}}
     
 </style>""",unsafe_allow_html=True)
-# Data123 V2.6
+# Data123 V2.7
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -200,11 +202,12 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.6</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.7</span></div>',unsafe_allow_html=True)
     st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
     pre_panel, final_panel = st.columns(2)
+    mapping_panel = st.expander("EL status settings — configure rejection codes", expanded=False)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
         d=data[stage]
@@ -237,7 +240,8 @@ def dashboard():
         available=sorted(set(codes)|set(mtd or {}))
         configured=defaults.get("rejection_codes",{}).get(stage,[])
         configured=[str(x).strip().upper() for x in configured]
-        with st.sidebar.expander(stage+" status mapping"):
+        with mapping_panel:
+            st.markdown("**"+stage+" status mapping**")
             chosen=st.multiselect("Rejection codes",available,default=[x for x in configured if x in available],key=stage+"_codes")
             accepted=st.multiselect("Accepted / other non-rejection codes",available,default=[x for x in available if x=="OK" and x not in chosen],key=stage+"_accepted")
             st.caption("Confirm codes against MES. Unmapped statuses are excluded.")
