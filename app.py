@@ -35,7 +35,7 @@ try {
     $b['User ID'] = $req.user
     $b['Password'] = $req.password
     $b['Encrypt'] = $true
-    $b['Trust Server Certificate'] = [bool]$req.trust
+    $b['TrustServerCertificate'] = [bool]$req.trust
     $b['Connect Timeout'] = 8
     $b['Persist Security Info'] = $false
     $c = New-Object System.Data.SqlClient.SqlConnection
