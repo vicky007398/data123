@@ -10,8 +10,22 @@ import plotly.express as px
 from datetime import date, datetime, time, timedelta
 
 st.set_page_config(page_title="Data123 | MES Intelligence", layout="wide", initial_sidebar_state="collapsed")
-st.markdown("<style>[data-testid=stHeader]{height:2rem;background:transparent}[data-testid=stToolbar]{display:none}.block-container{padding-top:2.1rem!important;padding-bottom:1rem}[data-testid=stAppViewContainer] .main .block-container{padding-top:2.1rem!important}</style>",unsafe_allow_html=True)
-# Data123 V2.2
+st.markdown("""<style>
+[data-testid=stHeader]{height:1.8rem;background:transparent}
+[data-testid=stToolbar]{display:none}
+.block-container{padding-top:1.8rem!important;padding-bottom:.5rem!important;padding-left:1.4rem!important;padding-right:1.4rem!important;max-width:100%!important}
+[data-testid=stAppViewContainer] .main .block-container{padding-top:1.8rem!important}
+[data-testid=stVerticalBlock]{gap:.35rem}
+[data-testid=stMetricValue]{font-size:1.15rem!important}
+[data-testid=stMetricLabel] p{font-size:.72rem!important}
+[data-testid=stMetricValue] > div{white-space:normal!important;overflow:visible!important;text-overflow:clip!important}
+[data-testid=stHeading] h2,[data-testid=stHeading] h3{font-size:1rem!important;padding:0!important}
+.live-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #8292a54d;padding:0 0 4px;margin-bottom:2px}
+.live-head strong{font-size:21px;letter-spacing:-.3px}.live-head span{font-size:11px;opacity:.8}
+.mini-kpis{display:flex;gap:6px;flex-wrap:wrap}.mini-kpi{flex:1;min-width:65px;border:1px solid #8292a54d;border-radius:8px;padding:4px 8px}
+.mini-kpi small{font-size:10px;display:block;opacity:.8}.mini-kpi b{font-size:16px;white-space:nowrap}
+</style>""",unsafe_allow_html=True)
+# Data123 V2.3
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -167,13 +181,14 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.3</span></div>',unsafe_allow_html=True)
     rej={}
     month_start=datetime.combine(first_day,time(6))
     st.markdown("""<style>
-    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}
-    .el-kpi{grid-column:span 2;border:1px solid #8292a54d;border-radius:12px;padding:10px 12px;min-width:0}
-    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:12px;opacity:.8}.el-value{font-size:23px;font-weight:700;line-height:1.35}
-    .el-sub{font-size:11px;opacity:.8}.el-title{font-size:16px;font-weight:650;margin:8px 0}
+    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:2px}
+    .el-kpi{grid-column:span 2;border:1px solid #8292a54d;border-radius:8px;padding:4px 7px;min-width:0}
+    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:10px;opacity:.8}.el-value{font-size:17px;font-weight:700;line-height:1.15}
+    .el-sub{font-size:10px;opacity:.8;line-height:1.15}.el-title{font-size:13px;font-weight:650;margin:2px 0 4px}
     </style>""",unsafe_allow_html=True)
     pre_panel, final_panel = st.columns(2)
     panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
@@ -236,14 +251,26 @@ def dashboard():
             pick=d["shift"].eq(shift) if shift else pd.Series(True,index=d.index)
             tiles.append(tile("Day total" if shift is None else "Shift "+shift,int((pick&mask).sum()),int((pick&valid).sum()),int((pick&~valid).sum()),ready))
         panels[stage].markdown('<div class="el-title">'+escape(stage)+' rejection</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
-    st.metric("Unique FQC production",len(fqc) if "FQC" in active else "N/A")
+    lead_text="N/A"
+    if "PRE_EL_TIME" in fqc:
+        pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
+        if getattr(pre.dt,"tz",None) is not None: pre=pre.dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+        lead=(fqc["_time"]-pre).dt.total_seconds()/3600
+        lead=lead.where(lead>=0)
+        if lead.notna().any(): lead_text=f"{lead.mean():.2f} h"
+    overview=[("FQC production",f"{len(fqc):,}" if "FQC" in active else "N/A"),("Lamination",f"{len(data['Lamination']):,}" if "Lamination" in active else "N/A"),("Sun simulator",f"{len(data['Sun simulator']):,}" if "Sun simulator" in active else "N/A"),("Pre-EL to FQC",lead_text)]
+    st.markdown('<div class="mini-kpis">'+''.join(f'<div class="mini-kpi"><small>{escape(k)}</small><b>{escape(v)}</b></div>' for k,v in overview)+'</div>',unsafe_allow_html=True)
+    def compact(fig,height=185):
+        fig.update_layout(height=height,margin=dict(l=32,r=8,t=29,b=32),font=dict(size=10),title_font_size=12,xaxis_title=None,yaxis_title=None)
+        fig.update_xaxes(tickangle=0,nticks=12)
+        return fig
     hours=[f"{(i+6)%24:02d}:00" for i in range(24)]
     a,b=st.columns(2)
     for area,stage in [(a,"Lamination"),(b,"Sun simulator")]:
         d=data[stage]
         if stage not in active: area.warning(stage+" timestamp unavailable"); continue
         counts=d.groupby("hour").size().reindex(range(24),fill_value=0)
-        area.plotly_chart(px.bar(x=hours,y=counts,title=stage+" hourly count"+(" (entry)" if stage=="Lamination" else ""),labels={"x":"Hour","y":"Unique modules"}),use_container_width=True)
+        area.plotly_chart(compact(px.bar(x=hours,y=counts,title=stage+" hourly count"+(" (entry)" if stage=="Lamination" else ""),labels={"x":"Hour","y":"Unique modules"})),use_container_width=True,config={"displayModeBar":False})
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
@@ -259,31 +286,32 @@ def dashboard():
         add(stage,d)
         if stage in rej and rej[stage][2]:
             mask,valid,_=rej[stage]; add(stage+" rejection qty",d,mask); add(stage+" rejection %",d,mask,valid)
-    st.subheader("Shift summary")
-    st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
-    if "PRE_EL_TIME" in fqc:
-        pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
-        if getattr(pre.dt,"tz",None) is not None: pre=pre.dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
-        lead=(fqc["_time"]-pre).dt.total_seconds()/3600
-        lead=lead.where(lead>=0)
-        st.metric("Average Pre-EL to FQC elapsed time",f"{lead.mean():.2f} h" if lead.notna().any() else "N/A")
+    with st.expander("Shift summary",expanded=False):
+        st.dataframe(pd.DataFrame(summary,columns=["Parameter","A","B","C","Total"]),hide_index=True,use_container_width=True)
     iv=data["Sun simulator"]
-    st.subheader("Sun simulator | Critical parameters")
+    st.markdown("**Sun simulator | Critical parameters**")
     params=[p for p in ["PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE"] if p in iv]
     if params:
-        for c,p in zip(st.columns(len(params)),params):
+        iv_cards=[]
+        units={"PMAX":" W","VOC":" V","ISC":" A","FF":"%","IPM":" A","VPM":" V","CTM":"","TEMPERATURE":" °C"}
+        for p in params:
             iv[p]=pd.to_numeric(iv[p],errors="coerce")
-            c.metric(p,f"{iv[p].mean():.3f}" if iv[p].notna().any() else "N/A")
-        p=st.selectbox("24-hour trend parameter",params)
+            label="TEMP" if p=="TEMPERATURE" else p
+            val=(f"{iv[p].mean():.3f}" if p=="CTM" else f"{iv[p].mean():.2f}")+units[p] if iv[p].notna().any() else "N/A"
+            iv_cards.append(f'<div class="mini-kpi"><small>{escape(label)}</small><b>{escape(val)}</b></div>')
+        st.markdown('<div class="mini-kpis">'+''.join(iv_cards)+'</div>',unsafe_allow_html=True)
+        p=st.sidebar.selectbox("24-hour trend parameter",params)
         trend=iv.groupby("hour")[p].mean().reindex(range(24))
-        st.plotly_chart(px.line(x=hours,y=trend,markers=True,labels={"x":"Hour","y":p}),use_container_width=True)
+        trend_col, power_col=st.columns(2)
+        trend_col.plotly_chart(compact(px.line(x=hours,y=trend,markers=True,title=p+" | 24-hour trend",labels={"x":"Hour","y":p})),use_container_width=True,config={"displayModeBar":False})
         if "PMAX" in iv:
             labels=["<600","600–605","605–610","610–615","615–620","620–625","625–630",">=630"]
             bins=pd.cut(iv["PMAX"],[-float("inf"),600,605,610,615,620,625,630,float("inf")],right=False,labels=labels)
-            st.plotly_chart(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"}),use_container_width=True)
-    st.subheader("Module data | selected production day")
-    serial=st.text_input("Filter module serial number")
-    view=df[df["LOT_NUMBER"].astype(str).str.contains(serial,regex=False)] if serial else df
-    st.dataframe(view,hide_index=True,use_container_width=True)
-    st.download_button("Export selected data (CSV)",view.to_csv(index=False),"modules.csv","text/csv")
+            power_col.plotly_chart(compact(px.bar(x=labels,y=bins.value_counts(sort=False).reindex(labels,fill_value=0),title="Live power distribution",labels={"x":"Watts","y":"Modules"})),use_container_width=True,config={"displayModeBar":False})
+    with st.expander("Module data | selected production day",expanded=False):
+        serial=st.text_input("Filter module serial number")
+        view=df[df["LOT_NUMBER"].astype(str).str.contains(serial,regex=False)] if serial else df
+        st.dataframe(view,hide_index=True,use_container_width=True)
+        st.download_button("Export selected data (CSV)",view.to_csv(index=False),"modules.csv","text/csv")
+
 dashboard()
