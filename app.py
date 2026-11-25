@@ -96,7 +96,7 @@ st.markdown("""<style>
 [data-testid=stMarkdownContainer] .hour-table .h-1{background:#ecfdf5;color:#0f766e}
 [data-testid=stMarkdownContainer] .hour-table .h-2{background:#f5f3ff;color:#7c3aed}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.5
+# Data123 V3.6
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -260,7 +260,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.5</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.6</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -324,7 +324,7 @@ def dashboard():
             value="—" if counts is None or now < start+timedelta(hours=h) else f"{int(counts.loc[h]):,}"
             cells.append(f'<td class="h-{h//8}">{value}</td>')
         hourly_rows.append(f'<tr><th scope="row">{label}</th>'+''.join(cells)+'</tr>')
-    axis=''.join(f'<th class="h-{h//8}">{hours[h][:2]}</th>' for h in range(24))
+    axis=''.join(f'<th class="h-{h//8}">{(h+6)%24}-{(h+7)%24}</th>' for h in range(24))
     st.markdown('<div class="el-title">Hourly Production | Modules</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="8" class="shift-a">A SHIFT</th><th colspan="8" class="shift-b">B SHIFT</th><th colspan="8" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
     summary=[]
     def add(label,d,mask=None,denom=None):
