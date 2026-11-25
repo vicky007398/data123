@@ -60,8 +60,19 @@ st.markdown("""<style>
 @media(max-width:760px){.el-board{grid-template-columns:1fr}.shift-strip{grid-template-columns:1fr}}
 
     
+
+[data-testid=stMarkdownContainer] .shift-table-wrap{width:100%;overflow-x:auto;margin:0 0 5px}
+[data-testid=stMarkdownContainer] table.shift-table{display:table;width:100%;min-width:660px;table-layout:fixed;border-collapse:collapse;margin:0;font-size:11px;line-height:1.25;color:#172b45;background:#fff}
+[data-testid=stMarkdownContainer] .shift-table th,[data-testid=stMarkdownContainer] .shift-table td{border:1px solid #b9c7d8;padding:3px 7px;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
+[data-testid=stMarkdownContainer] .shift-table thead th{color:white;text-align:center;font-weight:700;font-size:12px}
+[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n){width:11%;text-align:right;font-weight:700}
+[data-testid=stMarkdownContainer] .shift-table tbody td:nth-child(2n+1){width:22.33%}
+[data-testid=stMarkdownContainer] .shift-table tbody tr:nth-child(even){background:#f1f5f9}
+[data-testid=stMarkdownContainer] .shift-table .defect-heading th{background:#dbe6f3;color:#123052;text-align:left}
+[data-testid=stMarkdownContainer] .shift-table .el-ok{color:#15803d}
+[data-testid=stMarkdownContainer] .shift-table .el-ng{color:#b91c1c}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.0
+# Data123 V3.1
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -225,7 +236,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.0</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.1</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     for stage,level in levels.items():
@@ -238,7 +249,9 @@ def dashboard():
         mask=status.eq("NG").fillna(False)
         rej[stage]=(mask,valid,{"NG"})
         defect_col=defects[stage]
-        tiles=[]
+        shift_values=[]
+        shift_defects=[]
+        headers=[]
         for i,(shift,timing) in enumerate([("A","06:00–14:00"),("B","14:00–22:00"),("C","22:00–06:00")]):
             pick=d["shift"].eq(shift)
             ok=int((pick&status.eq("OK").fillna(False)).sum())
@@ -256,13 +269,19 @@ def dashboard():
                             if name: names.add(name)
                     counts.update(names or {"unspecified"})
             ranked=sorted(counts.items(),key=lambda item:(-item[1],item[0]))[:5]
-            rows="".join(f'<div class="defect-row"><span>{escape(name.title())}</span><b>{qty:,}</b></div>' for name,qty in ranked)
-            if not rows:
-                msg="—" if future or not ng else "Defect column unavailable"
-                rows=f'<div class="defect-row"><span>{msg}</span></div>'
-            stats="".join(f'<div class="el-stat"><span>{label}</span><b class="{cls}">{val}</b></div>' for label,val,cls in zip(["Total Modules","OK Modules","NG Modules","NG %"],values,["","el-ok","el-ng","el-ng"]))
-            tiles.append(f'<div class="el-kpi"><div class="el-shift">{shift} Shift <small>{timing}</small></div><div class="el-body"><div>{stats}</div><div class="defect-list"><div class="defect-head">Top 5 Defects <small>Modules</small></div>{rows}</div></div></div>')
-        st.markdown('<div class="el-title">'+escape(stage)+'</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
+            if not future and ng and defect_col not in d.columns:
+                ranked=[("Defect column unavailable","—")]
+            shift_values.append(values)
+            shift_defects.append([(escape(name.title()),f"{qty:,}" if isinstance(qty,int) else str(qty)) for name,qty in ranked]+[("—","—")]*(5-len(ranked)))
+            headers.append(f'<th colspan="2" class="shift-{shift.lower()}">{shift} SHIFT · {timing}</th>')
+        rows=[]
+        for j,label in enumerate(["Total Modules","OK Modules","NG Modules","NG %"]):
+            cls=["","el-ok","el-ng","el-ng"][j]
+            rows.append("<tr>"+"".join(f'<td>{label}</td><td class="qty {cls}">{vals[j]}</td>' for vals in shift_values)+"</tr>")
+        rows.append("<tr class='defect-heading'>"+("<th>Top 5 Defects</th><th>Qty</th>"*3)+"</tr>")
+        for j in range(5):
+            rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
+        st.markdown('<div class="el-title">'+escape(stage)+'</div><div class="shift-table-wrap"><table class="shift-table"><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
     lead_text="N/A"
     if "PRE_EL_TIME" in fqc:
         pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
