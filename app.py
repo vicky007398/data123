@@ -3,6 +3,7 @@ import pandas as pd
 import subprocess
 import json
 import os
+from collections import Counter
 from html import escape
 from pathlib import Path
 from contextlib import closing
@@ -49,12 +50,18 @@ st.markdown("""<style>
 .el-kpi:nth-child(3) .el-shift{background:#7c3aed}
 .el-stat{display:flex;align-items:baseline;justify-content:space-between;gap:4px;flex-wrap:wrap;padding:2px 0;font-size:11px;line-height:1.3}
 .el-stat b{font-size:14px;overflow-wrap:anywhere}.el-ok{color:#15803d}.el-ng{color:#b91c1c}
+.el-body{display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.2fr);gap:8px;align-items:start}
+.defect-list{min-width:0;border-left:1px solid #cbd5e1;padding-left:7px}
+.defect-head,.defect-row{display:flex;justify-content:space-between;align-items:baseline;gap:4px;font-size:10px;line-height:1.25;padding:2px 0}
+.defect-head{font-weight:700;color:#123052;border-bottom:1px solid #cbd5e1}.defect-head small{font-size:9px}
+.defect-row span{min-width:0;overflow-wrap:anywhere}.defect-row b{flex-shrink:0;color:#b91c1c}
+@media(max-width:1050px){.el-body{grid-template-columns:1fr}.defect-list{border-left:0;padding-left:0}}
 .el-title{font-size:13px;font-weight:650;margin:2px 0 4px;padding:3px 7px;border-radius:5px;background:#123052;color:white}
-@media(max-width:650px){.el-board{grid-template-columns:1fr}.shift-strip{grid-template-columns:1fr}}
+@media(max-width:760px){.el-board{grid-template-columns:1fr}.shift-strip{grid-template-columns:1fr}}
 
     
 </style>""",unsafe_allow_html=True)
-# Data123 V2.9
+# Data123 V3.0
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -183,7 +190,8 @@ def dashboard():
             active={k:v for k,v in stages.items() if v in lookup and types[v] in ("datetime","datetime2","smalldatetime","datetimeoffset","date")}
             if not active:
                 st.error("No supported timestamp columns found. Text dates need explicit parsing."); return
-            wanted=list(dict.fromkeys(["LOT_NUMBER",*active.values(),*levels.values(),"PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE","FQC_LEVEL"]))
+            defects={"Pre-EL":"PRE_EL_DEFECT","Mid-EL":"MID_EL_DEFECT","Final EL":"EL_DEFECT"}
+            wanted=list(dict.fromkeys(["LOT_NUMBER",*active.values(),*levels.values(),*defects.values(),"PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE","FQC_LEVEL"]))
             wanted=[x for x in wanted if x in lookup]
             predicates=[f"({ident(lookup[v])} >= ? AND {ident(lookup[v])} < ?)" for v in active.values()]
             q="SELECT TOP (100001) "+",".join(ident(lookup[x]) for x in wanted)+" FROM "+ident(schema)+"."+ident(table)+" WHERE "+" OR ".join(predicates)
@@ -217,33 +225,44 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V2.9</span></div>',unsafe_allow_html=True)
-    st.markdown('<div class="shift-strip"><div class="shift-a">A SHIFT · 06:00–14:00</div><div class="shift-b">B SHIFT · 14:00–22:00</div><div class="shift-c">C SHIFT · 22:00–06:00 (+1)</div></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.0</span></div>',unsafe_allow_html=True)
     rej={}
-    pre_panel, final_panel = st.columns(2)
-    panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
+    now=datetime.now()
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
-            if stage in panels:
-                panels[stage].markdown("**"+stage+" rejection**")
-                panels[stage].warning("Inspection status or timestamp unavailable")
+            st.warning(stage+" inspection status or timestamp unavailable")
             continue
         status=d[level].astype("string").str.strip().str.upper()
         valid=status.isin(["OK","NG"])
         mask=status.eq("NG").fillna(False)
         rej[stage]=(mask,valid,{"NG"})
-        if stage=="Mid-EL":
-            continue
+        defect_col=defects[stage]
         tiles=[]
-        for shift,timing in [("A","06:00–14:00"),("B","14:00–22:00"),("C","22:00–06:00")]:
+        for i,(shift,timing) in enumerate([("A","06:00–14:00"),("B","14:00–22:00"),("C","22:00–06:00")]):
             pick=d["shift"].eq(shift)
             ok=int((pick&status.eq("OK").fillna(False)).sum())
             ng=int((pick&mask).sum())
             total=ok+ng
-            rate=f"{100*ng/total:.2f}%" if total else "—"
-            tiles.append(f'<div class="el-kpi"><div class="el-shift">{shift} Shift <small>{timing}</small></div><div class="el-stat"><span>Total Tested</span><b>{total:,}</b></div><div class="el-stat"><span>OK</span><b class="el-ok">{ok:,}</b></div><div class="el-stat"><span>NG %</span><b class="el-ng">{rate}</b></div></div>')
-        panels[stage].markdown('<div class="el-title">'+escape(stage)+'</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
+            future=now < start+timedelta(hours=i*8)
+            values=["—"]*4 if future else [f"{total:,}",f"{ok:,}",f"{ng:,}",f"{100*ng/total:.2f}%" if total else "—"]
+            counts=Counter()
+            if not future and defect_col in d.columns:
+                for raw in d.loc[pick&mask,defect_col]:
+                    names=set()
+                    if pd.notna(raw):
+                        for entry in str(raw).split(";"):
+                            name=" ".join(entry.split(":",1)[0].strip().split()).casefold()
+                            if name: names.add(name)
+                    counts.update(names or {"unspecified"})
+            ranked=sorted(counts.items(),key=lambda item:(-item[1],item[0]))[:5]
+            rows="".join(f'<div class="defect-row"><span>{escape(name.title())}</span><b>{qty:,}</b></div>' for name,qty in ranked)
+            if not rows:
+                msg="—" if future or not ng else "Defect column unavailable"
+                rows=f'<div class="defect-row"><span>{msg}</span></div>'
+            stats="".join(f'<div class="el-stat"><span>{label}</span><b class="{cls}">{val}</b></div>' for label,val,cls in zip(["Total Modules","OK Modules","NG Modules","NG %"],values,["","el-ok","el-ng","el-ng"]))
+            tiles.append(f'<div class="el-kpi"><div class="el-shift">{shift} Shift <small>{timing}</small></div><div class="el-body"><div>{stats}</div><div class="defect-list"><div class="defect-head">Top 5 Defects <small>Modules</small></div>{rows}</div></div></div>')
+        st.markdown('<div class="el-title">'+escape(stage)+'</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
     lead_text="N/A"
     if "PRE_EL_TIME" in fqc:
         pre=pd.to_datetime(fqc["PRE_EL_TIME"],errors="coerce")
