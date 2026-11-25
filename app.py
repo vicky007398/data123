@@ -166,13 +166,15 @@ def dashboard():
     rej={}
     month_start=datetime.combine(day.replace(day=1),time(6))
     st.markdown("""<style>
-    .el-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}
-    .el-kpi{border:1px solid #8292a54d;border-radius:12px;padding:10px 12px;min-width:0}
-    .el-label{font-size:12px;opacity:.8}.el-value{font-size:23px;font-weight:700;line-height:1.35}
+    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}
+    .el-kpi{grid-column:span 2;border:1px solid #8292a54d;border-radius:12px;padding:10px 12px;min-width:0}
+    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:12px;opacity:.8}.el-value{font-size:23px;font-weight:700;line-height:1.35}
     .el-sub{font-size:11px;opacity:.8}.el-title{font-size:16px;font-weight:650;margin:8px 0}
     </style>""",unsafe_allow_html=True)
     st.subheader("EL rejection | MTD & shift-wise")
     st.caption(f"MTD: {month_start:%d %b} 06:00 to selected production day close (or latest available data). Unique modules; unknown statuses excluded.")
+    pre_panel, final_panel = st.columns(2)
+    panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
@@ -226,7 +228,7 @@ def dashboard():
         for shift in [None,"A","B","C"]:
             pick=d["shift"].eq(shift) if shift else pd.Series(True,index=d.index)
             tiles.append(tile("Day total" if shift is None else "Shift "+shift,int((pick&mask).sum()),int((pick&valid).sum()),int((pick&~valid).sum()),ready))
-        st.markdown('<div class="el-title">'+escape(stage)+'</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
+        panels[stage].markdown('<div class="el-title">'+escape(stage)+' rejection</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
     st.metric("Unique FQC production",len(fqc) if "FQC" in active else "N/A")
     hours=[f"{(i+6)%24:02d}:00" for i in range(24)]
     a,b=st.columns(2)
