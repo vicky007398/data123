@@ -80,8 +80,23 @@ st.markdown("""<style>
 .hour-cell small{display:block;font-size:10px;line-height:1.3;background:var(--shift);color:white;padding:2px 0}
 .hour-cell b{display:block;font-size:14px;line-height:1.35;padding:3px 0}
 @media(max-width:650px){.hour-row{grid-template-columns:20px repeat(8,minmax(0,1fr));gap:2px}.hour-cell small{font-size:8px}.hour-cell b{font-size:11px}}
+
+[data-testid=stMarkdownContainer] .hour-table-wrap{overflow-x:auto;width:100%;padding-bottom:5px}
+[data-testid=stMarkdownContainer] table.hour-table{display:table;width:100%;min-width:950px;table-layout:fixed;border-collapse:collapse;margin:0;font-size:11px;color:#172b45}
+[data-testid=stMarkdownContainer] .hour-table th,[data-testid=stMarkdownContainer] .hour-table td{border:1px solid #b9c7d8;padding:4px 2px;text-align:center;white-space:nowrap}
+[data-testid=stMarkdownContainer] .hour-table thead th{font-size:10px;font-weight:700}
+[data-testid=stMarkdownContainer] .hour-table thead tr:first-child th{color:white;background:#123052}
+[data-testid=stMarkdownContainer] .hour-table thead tr:first-child .shift-a{background:#2563eb}
+[data-testid=stMarkdownContainer] .hour-table thead tr:first-child .shift-b{background:#0f766e}
+[data-testid=stMarkdownContainer] .hour-table thead tr:first-child .shift-c{background:#7c3aed}
+[data-testid=stMarkdownContainer] .hour-table th[rowspan], [data-testid=stMarkdownContainer] .hour-table tbody th{width:95px}
+[data-testid=stMarkdownContainer] .hour-table tbody th{background:#e2e8f0;text-align:left;padding-left:7px}
+[data-testid=stMarkdownContainer] .hour-table td{font-weight:700;font-size:12px}
+[data-testid=stMarkdownContainer] .hour-table .h-0{background:#eff6ff;color:#1d4ed8}
+[data-testid=stMarkdownContainer] .hour-table .h-1{background:#ecfdf5;color:#0f766e}
+[data-testid=stMarkdownContainer] .hour-table .h-2{background:#f5f3ff;color:#7c3aed}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.4
+# Data123 V3.5
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -245,7 +260,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.4</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.5</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -300,20 +315,17 @@ def dashboard():
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',showlegend=False)
         return fig
     hours=[f"{(i+6)%24:02d}:00" for i in range(24)]
-    a,b=st.columns(2)
-    for area,stage in [(a,"Lamination"),(b,"Sun simulator")]:
+    hourly_rows=[]
+    for stage,label in [("Lamination","Lam Count"),("Sun simulator","Sun Count")]:
         d=data[stage]
-        if stage not in active: area.warning(stage+" timestamp unavailable"); continue
-        counts=d.groupby("hour").size().reindex(range(24),fill_value=0)
-        hour_rows=[]
-        for shift_index,shift_name in enumerate(["A","B","C"]):
-            cells=[]
-            for h in range(shift_index*8,(shift_index+1)*8):
-                value="—" if now < start+timedelta(hours=h) else f"{int(counts.loc[h]):,}"
-                cells.append(f'<div class="hour-cell"><small>{hours[h]}</small><b>{value}</b></div>')
-            hour_rows.append(f'<div class="hour-row hour-{shift_name.lower()}"><div class="hour-shift">{shift_name}</div>'+''.join(cells)+'</div>')
-        heading="Lamination | Hourly production (entry)" if stage=="Lamination" else "Sun simulator | Hourly production"
-        area.markdown('<div class="el-title">'+escape(heading)+'</div><div class="hour-board">'+''.join(hour_rows)+'</div>',unsafe_allow_html=True)
+        counts=d.groupby("hour").size().reindex(range(24),fill_value=0) if stage in active else None
+        cells=[]
+        for h in range(24):
+            value="—" if counts is None or now < start+timedelta(hours=h) else f"{int(counts.loc[h]):,}"
+            cells.append(f'<td class="h-{h//8}">{value}</td>')
+        hourly_rows.append(f'<tr><th scope="row">{label}</th>'+''.join(cells)+'</tr>')
+    axis=''.join(f'<th class="h-{h//8}">{hours[h][:2]}</th>' for h in range(24))
+    st.markdown('<div class="el-title">Hourly Production | Modules</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="8" class="shift-a">A SHIFT</th><th colspan="8" class="shift-b">B SHIFT</th><th colspan="8" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
