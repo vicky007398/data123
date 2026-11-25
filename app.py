@@ -3,6 +3,7 @@ import pandas as pd
 import subprocess
 import json
 import os
+from html import escape
 from pathlib import Path
 from contextlib import closing
 import plotly.express as px
@@ -166,21 +167,71 @@ def dashboard():
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
     rej={}
+    month_start=datetime.combine(first_day,time(6))
+    st.markdown("""<style>
+    .el-board{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px}
+    .el-kpi{grid-column:span 2;border:1px solid #8292a54d;border-radius:12px;padding:10px 12px;min-width:0}
+    .el-kpi:nth-child(-n+2){grid-column:span 3}.el-label{font-size:12px;opacity:.8}.el-value{font-size:23px;font-weight:700;line-height:1.35}
+    .el-sub{font-size:11px;opacity:.8}.el-title{font-size:16px;font-weight:650;margin:8px 0}
+    </style>""",unsafe_allow_html=True)
+    pre_panel, final_panel = st.columns(2)
+    panels = {"Pre-EL": pre_panel, "Final EL": final_panel}
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
-            continue
-        status=d[level].astype("string").str.strip().str.upper()
-        available=sorted(x for x in status.dropna().unique().tolist() if x)
-        configured=[str(x).strip().upper() for x in defaults.get("rejection_codes",{}).get(stage,[])]
+            st.warning(stage+" status unavailable"); continue
+        codes=sorted(d[level].dropna().astype(str).str.strip().str.upper().unique().tolist())
+        codes=[x for x in codes if x]
+        # A single server-side query returns grouped first-event statuses for MTD.
+        # Use daily unique module counts, consistent with shift totals.
+        mtd={}
+        try:
+            if stage=="Mid-EL":
+                raise LookupError("daily only")
+            ts=ident(lookup[active[stage]])
+            lv=ident(lookup[level])
+            lot=ident(lookup["LOT_NUMBER"])
+            source=ident(schema)+"."+ident(table)
+            q_mtd=("SELECT status, COUNT_BIG(*) FROM (SELECT UPPER(LTRIM(RTRIM(CONVERT(nvarchar(200),"+lv+")))) AS status, "
+                   "ROW_NUMBER() OVER (PARTITION BY "+lot+", CONVERT(date,DATEADD(hour,-6,"+ts+")) ORDER BY "+ts+", CONVERT(nvarchar(200),"+lv+")) AS rn "
+                   "FROM "+source+" WHERE "+ts+">=? AND "+ts+"<? AND "+lot+" IS NOT NULL AND LTRIM(RTRIM(CONVERT(nvarchar(200),"+lot+")))<>''"
+                   ") AS x WHERE rn=1 AND status IS NOT NULL AND status<>'' GROUP BY status")
+            with closing(connection()) as c:
+                mtd=dict(c.cursor().execute(q_mtd,month_start,end).fetchall())
+        except Exception as e:
+            mtd=None
+            if stage!="Mid-EL": st.warning(stage+" MTD unavailable: "+str(e).replace(password,"[redacted]"))
+        available=sorted(set(codes)|set(mtd or {}))
+        configured=defaults.get("rejection_codes",{}).get(stage,[])
+        configured=[str(x).strip().upper() for x in configured]
         with st.sidebar.expander(stage+" status mapping"):
             chosen=st.multiselect("Rejection codes",available,default=[x for x in configured if x in available],key=stage+"_codes")
             accepted=st.multiselect("Accepted / other non-rejection codes",available,default=[x for x in available if x=="OK" and x not in chosen],key=stage+"_accepted")
+            st.caption("Confirm codes against MES. Unmapped statuses are excluded.")
         chosen=set(chosen)
         accepted=set(accepted)-chosen
-        valid=status.isin(chosen|accepted)
+        mapped=chosen|accepted
+        status=d[level].astype("string").str.strip().str.upper()
+        valid=status.isin(mapped)
         mask=status.isin(chosen)
-        rej[stage]=(mask,valid,chosen if accepted else set())
+        rej[stage]=(mask,valid,chosen)
+        if stage=="Mid-EL":
+            continue
+        def tile(label,n,total,unknown=0,ready=True):
+            value=f"{100*n/total:.2f}%" if ready and total else "—"
+            details=f"{n:,} rejected / {total:,} mapped" if ready else "Confirm status mapping"
+            if ready and unknown: details+=f" · {unknown:,} unmapped"
+            return f'<div class="el-kpi"><div class="el-label">{escape(label)}</div><div class="el-value">{value}</div><div class="el-sub">{escape(details)}</div></div>'
+        ready=bool(chosen) and bool(accepted)
+        tiles=[]
+        if mtd is None:
+            tiles.append(tile("MTD",0,0,ready=False))
+        else:
+            tiles.append(tile("MTD",sum(int(v) for k,v in mtd.items() if k in chosen),sum(int(v) for k,v in mtd.items() if k in mapped),sum(int(v) for k,v in mtd.items() if k not in mapped),ready))
+        for shift in [None,"A","B","C"]:
+            pick=d["shift"].eq(shift) if shift else pd.Series(True,index=d.index)
+            tiles.append(tile("Day total" if shift is None else "Shift "+shift,int((pick&mask).sum()),int((pick&valid).sum()),int((pick&~valid).sum()),ready))
+        panels[stage].markdown('<div class="el-title">'+escape(stage)+' rejection</div><div class="el-board">'+''.join(tiles)+'</div>',unsafe_allow_html=True)
     st.metric("Unique FQC production",len(fqc) if "FQC" in active else "N/A")
     hours=[f"{(i+6)%24:02d}:00" for i in range(24)]
     a,b=st.columns(2)
