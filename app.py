@@ -98,18 +98,18 @@ st.markdown("""<style>
 
 /* Strong separators between production shifts */
 [data-testid=stMarkdownContainer] .shift-table tbody tr > :nth-child(2),
-[data-testid=stMarkdownContainer] .shift-table tbody tr > :nth-child(4){border-right:3px solid #334155}
-[data-testid=stMarkdownContainer] .shift-table thead th:not(:last-child){border-right:3px solid #334155}
+[data-testid=stMarkdownContainer] .shift-table tbody tr > :nth-child(4){border-right:3px dotted #334155}
+[data-testid=stMarkdownContainer] .shift-table thead th:not(:last-child){border-right:3px dotted #334155}
 [data-testid=stMarkdownContainer] .hour-table tbody tr > :nth-child(9),
 [data-testid=stMarkdownContainer] .hour-table tbody tr > :nth-child(17),
 [data-testid=stMarkdownContainer] .hour-table thead tr:nth-child(2) > :nth-child(8),
 [data-testid=stMarkdownContainer] .hour-table thead tr:nth-child(2) > :nth-child(16),
 [data-testid=stMarkdownContainer] .hour-table thead .shift-a,
-[data-testid=stMarkdownContainer] .hour-table thead .shift-b{border-right:3px solid #334155}
+[data-testid=stMarkdownContainer] .hour-table thead .shift-b{border-right:3px dotted #334155}
 [data-testid=stMarkdownContainer] table.shift-table,
-[data-testid=stMarkdownContainer] table.hour-table{border:2px solid #334155}
+[data-testid=stMarkdownContainer] table.hour-table{border:2px dotted #334155}
 </style>""",unsafe_allow_html=True)
-# Data123 V3.7
+# Data123 V3.8
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -273,7 +273,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.7</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V3.8</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
