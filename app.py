@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.4
+# Data123 V4.5
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,7 +269,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.4</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.5</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -352,13 +352,13 @@ def dashboard():
             mask,valid,_=rej[stage]; add(stage+" rejection qty",d,mask); add(stage+" rejection %",d,mask,valid)
     iv=data["Sun simulator"]
     st.markdown("**Sun Simulator | Critical Parameters (Average Values)**")
-    params=[p for p in ["PMAX","VOC","ISC","FF","IPM","VPM","CTM","TEMPERATURE"] if p in iv]
+    params=[p for p in ["PMAX","VOC","ISC","FF","IPM","VPM"] if p in iv]
     if params:
         iv_cards=[]
         units={"PMAX":" W","VOC":" V","ISC":" A","FF":"%","IPM":" A","VPM":" V","CTM":"","TEMPERATURE":" °C"}
         for p in params:
             iv[p]=pd.to_numeric(iv[p],errors="coerce")
-            label="TEMP" if p=="TEMPERATURE" else p
+            label={"PMAX":"Pmax","VOC":"Voc","ISC":"Isc","FF":"FF","IPM":"Ipm","VPM":"Vpm"}[p]
             val=(f"{iv[p].mean():.3f}" if p=="CTM" else f"{iv[p].mean():.2f}")+units[p] if iv[p].notna().any() else "N/A"
             iv_cards.append(f'<div class="mini-kpi"><small>{escape(label)}</small><b>{escape(val)}</b></div>')
         st.markdown('<div class="mini-kpis">'+''.join(iv_cards)+'</div>',unsafe_allow_html=True)
