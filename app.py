@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.5
+# Data123 V4.6
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -211,16 +211,23 @@ def connection(): return SqlClientConnection()
 def ident(n): return "["+n.replace("]","]]")+"]"
 st.sidebar.caption("Automatic MES connection | SELECT-only")
 production_today=(datetime.now()-timedelta(hours=6)).date()
-first_day=production_today.replace(day=1)
-day=st.sidebar.date_input("Production day",production_today,min_value=first_day,max_value=production_today,key=f"production_day_{first_day:%Y%m}")
+if "production_view" not in st.session_state:
+    st.session_state.production_view="Today"
+def select_production_view(view):
+    st.session_state.production_view=view
+button_area, yesterday_area, date_area=st.columns([1,1,5],gap="small")
+button_area.button("Today",type="primary" if st.session_state.production_view=="Today" else "secondary",on_click=select_production_view,args=("Today",),use_container_width=True)
+yesterday_area.button("Yesterday",type="primary" if st.session_state.production_view=="Yesterday" else "secondary",on_click=select_production_view,args=("Yesterday",),use_container_width=True)
+day=production_today-timedelta(days=1 if st.session_state.production_view=="Yesterday" else 0)
 start=datetime.combine(day,time(6))
 end=start+timedelta(days=1)
+date_area.caption(f"{day:%d %b %Y} | 06:00 to {end:%d %b} 06:00")
 auto=st.sidebar.checkbox("Auto refresh (60 seconds)",True)
 st.sidebar.caption("Production day: 06:00 to next day 06:00. Database timestamps assumed plant-local.")
 @st.fragment(run_every="60s" if auto else None)
 def dashboard():
     current_production_day=(datetime.now()-timedelta(hours=6)).date()
-    if current_production_day.replace(day=1)!=first_day:
+    if current_production_day!=production_today:
         st.rerun()
     try:
         with closing(connection()) as c:
@@ -269,7 +276,7 @@ def dashboard():
         return d
     data={s:events(s) for s in stages}
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.5</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · {st.session_state.production_view} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.6</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
