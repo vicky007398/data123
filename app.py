@@ -106,7 +106,7 @@ st.markdown("""<style>
 .power-total{font-weight:700}
 [data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.11
+# Data123 V4.12
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,19 +269,22 @@ def dashboard():
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
     data={s:events(s) for s in stages if s!="Pre-EL"}
-    # Recover completed lamination modules with no recorded entry timestamp.
-    # Never infer a lamination hour from Pre-EL or another upstream process.
+    # User-requested estimate: use Pre-EL OK time when lamination timestamp is missing.
+    # This is a proxy, not confirmation of physical lamination.
     if "Lamination" in active:
         try:
-            q_lam=("SELECT T.LOT_NUMBER, MIN(T.EDIT_TIME) FROM "
-                   +ident(schema)+".[WIP_TRANSACTION] T "
-                   "WHERE T.STEP_NAME=N'层压' AND T.ACTIVITY='TRACKOUT' "
-                   "AND T.EDIT_TIME>=? AND T.EDIT_TIME<? "
-                   "AND (T.UNDO_FLAG IS NULL OR T.UNDO_FLAG=0) "
-                   "AND NULLIF(LTRIM(RTRIM(T.LOT_NUMBER)), '') IS NOT NULL "
-                   "AND NOT EXISTS (SELECT 1 FROM "+ident(schema)+"."+ident(table)+" C "
-                   "WHERE C.LOT_NUMBER=T.LOT_NUMBER AND C."+ident(lookup[active["Lamination"]])+" IS NOT NULL) "
-                   "GROUP BY T.LOT_NUMBER")
+            source=ident(schema)+"."+ident(table)
+            lam_col=ident(lookup[active["Lamination"]])
+            pre_col=ident(lookup["PRE_EL_TIME"])
+            level_col=ident(lookup["PRE_EL_LEVEL"])
+            q_lam=("SELECT C.LOT_NUMBER, MIN(C."+pre_col+") FROM "+source+" C "
+                   "WHERE C."+lam_col+" IS NULL "
+                   "AND C."+pre_col+">=? AND C."+pre_col+"<? "
+                   "AND UPPER(LTRIM(RTRIM(C."+level_col+")))='OK' "
+                   "AND NULLIF(LTRIM(RTRIM(C.LOT_NUMBER)), '') IS NOT NULL "
+                   "AND NOT EXISTS (SELECT 1 FROM "+source+" L "
+                   "WHERE L.LOT_NUMBER=C.LOT_NUMBER AND L."+lam_col+" IS NOT NULL) "
+                   "GROUP BY C.LOT_NUMBER")
             with closing(connection()) as c:
                 fallback_rows=c.cursor().execute(q_lam,start,end).fetchall()
             fallback=pd.DataFrame(fallback_rows,columns=["LOT_NUMBER","_time"])
@@ -296,7 +299,7 @@ def dashboard():
             fallback=fallback[~fallback["LOT_NUMBER"].astype(str).str.strip().isin(lam["LOT_NUMBER"].astype(str).str.strip())]
             data["Lamination"]=pd.concat([lam,fallback],ignore_index=True)
         except Exception:
-            st.warning("Lamination TRACKOUT fallback unavailable; Lam Count currently uses LAM_DATE_IN only.")
+            st.warning("Pre-EL OK fallback unavailable; Lam Count currently uses LAM_DATE_IN only.")
 
 
     # Count inspection attempts, not unique barcodes, for Pre-EL only.
@@ -356,7 +359,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.11</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.12</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -431,7 +434,7 @@ def dashboard():
                 cells.append(f'<td class="h-{h//8} shift-total">{total}</td>')
         hourly_rows.append(f'<tr><th scope="row">{label}</th>'+''.join(cells)+'</tr>')
     axis=''.join(f'<th class="h-{h//8}">{(h+6)%24}-{(h+7)%24}</th>'+ (f'<th class="h-{h//8} shift-total">Total</th>' if h%8==7 else "") for h in range(24))
-    st.markdown('<div class="el-title">Hourly Production | Modules</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="9" class="shift-a">A SHIFT</th><th colspan="9" class="shift-b">B SHIFT</th><th colspan="9" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
+    st.markdown('<div class="el-title">Hourly Production | Modules (Lam: Pre-EL OK time if missing)</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="9" class="shift-a">A SHIFT</th><th colspan="9" class="shift-b">B SHIFT</th><th colspan="9" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
