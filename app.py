@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.8
+# Data123 V4.9
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -268,8 +268,7 @@ def dashboard():
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
     data={s:events(s) for s in stages if s!="Pre-EL"}
-    # Preserve the original shift-wise defect source independently of inspection attempts.
-    pre_defect_data=events("Pre-EL")
+
     # Count inspection attempts, not unique barcodes, for Pre-EL only.
     # TAKE_PHOTO is the observed activity carrying CUR_LEVEL OK/NG.
     pre_error=None
@@ -300,8 +299,34 @@ def dashboard():
     except Exception as e:
         pre_error=str(e).replace(password,"[redacted]")
         data["Pre-EL"]=pd.DataFrame()
+    # Historical defect events: count each transaction once per defect type and shift.
+    pre_defect_counts={}
+    pre_defect_error=False
+    try:
+        q_def=("SELECT EDIT_TIME, TRANSACTION_KEY, REASON_CODE_NAME FROM "
+               +ident(schema)+".[WIP_DEFECT] WHERE STEP_NAME='Pre_EL' "
+               "AND EDIT_TIME>=? AND EDIT_TIME<? "
+               "AND NULLIF(LTRIM(RTRIM(TRANSACTION_KEY)), '') IS NOT NULL "
+               "AND NULLIF(LTRIM(RTRIM(REASON_CODE_NAME)), '') IS NOT NULL")
+        with closing(connection()) as c:
+            defect_records=c.cursor().execute(q_def,start,end).fetchall()
+        seen=set()
+        for stamp,key,name in defect_records:
+            ts=pd.to_datetime(stamp,errors="coerce")
+            if pd.isna(ts): continue
+            if ts.tzinfo is not None:
+                ts=ts.tz_convert("Asia/Kolkata").tz_localize(None)
+            if not start<=ts<end: continue
+            shift="ABC"[int((ts-start).total_seconds()//28800)]
+            name=" ".join(str(name).split()).casefold()
+            item=(shift,str(key).strip(),name)
+            if item in seen: continue
+            seen.add(item)
+            pre_defect_counts.setdefault(shift,Counter())[name]+=1
+    except Exception:
+        pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.8</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.9</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -316,7 +341,7 @@ def dashboard():
         mask=status.eq("NG").fillna(False)
         rej[stage]=(mask,valid,{"NG"})
         defect_col=defects[stage]
-        defect_data=pre_defect_data if stage=="Pre-EL" else d
+        defect_data=d
         shift_values=[]
         shift_defects=[]
         headers=[]
@@ -328,7 +353,9 @@ def dashboard():
             future=now < start+timedelta(hours=i*8)
             values=["—"]*4 if future else [f"{total:,}",f"{ok:,}",f"{ng:,}",f"{100*ng/total:.2f}%" if total else "—"]
             counts=Counter()
-            if not future and defect_col in defect_data.columns and level in defect_data.columns and "shift" in defect_data.columns:
+            if not future and stage=="Pre-EL":
+                counts=pre_defect_counts.get(shift,Counter())
+            elif not future and defect_col in defect_data.columns and level in defect_data.columns and "shift" in defect_data.columns:
                 defect_pick=defect_data["shift"].eq(shift)&defect_data[level].astype("string").str.strip().str.upper().eq("NG").fillna(False)
                 for raw in defect_data.loc[defect_pick,defect_col]:
                     names=set()
@@ -338,7 +365,9 @@ def dashboard():
                             if name: names.add(name)
                     counts.update(names if stage=="Pre-EL" else (names or {"unspecified"}))
             ranked=sorted(counts.items(),key=lambda item:(-item[1],item[0]))[:5]
-            if not future and ng and defect_col not in defect_data.columns:
+            if not future and stage=="Pre-EL" and pre_defect_error:
+                ranked=[("Defect query unavailable","—")]
+            elif not future and stage!="Pre-EL" and ng and defect_col not in defect_data.columns:
                 ranked=[("Defect column unavailable","—")]
             shift_values.append(values)
             shift_defects.append([(escape(name.title()),f"{qty:,}" if isinstance(qty,int) else str(qty)) for name,qty in ranked]+([("","")] if stage=="Pre-EL" and not future else [("—","—")])*(5-len(ranked)))
