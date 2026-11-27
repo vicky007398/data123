@@ -106,7 +106,7 @@ st.markdown("""<style>
 .power-total{font-weight:700}
 [data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.12
+# Data123 V4.13
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -332,6 +332,44 @@ def dashboard():
     except Exception as e:
         pre_error=str(e).replace(password,"[redacted]")
         data["Pre-EL"]=pd.DataFrame()
+    # Rework demand proxy: ordinal NG inspection per barcode across available history.
+    # Include earlier shifts/days so a repeated NG does not reset at shift boundaries.
+    rework_counts={}
+    rework_error=False
+    try:
+        if "PRE_EL_LEVEL" in data["Pre-EL"].columns:
+            tx=ident(schema)+".[WIP_TRANSACTION]"
+            valid_ng=("STEP_NAME='Pre_EL' AND ACTIVITY='TAKE_PHOTO' "
+                      "AND UPPER(LTRIM(RTRIM(CUR_LEVEL)))='NG' "
+                      "AND (UNDO_FLAG IS NULL OR UNDO_FLAG=0) "
+                      "AND NULLIF(LTRIM(RTRIM(TRANSACTION_KEY)), '') IS NOT NULL "
+                      "AND NULLIF(LTRIM(RTRIM(LOT_NUMBER)), '') IS NOT NULL")
+            q_rw=("SELECT DISTINCT LOT_NUMBER, TRANSACTION_KEY, EDIT_TIME FROM "+tx+
+                  " WHERE "+valid_ng+" AND EDIT_TIME<? AND LOT_NUMBER IN "
+                  "(SELECT LOT_NUMBER FROM "+tx+" WHERE "+valid_ng+" AND EDIT_TIME>=? AND EDIT_TIME<?)")
+            with closing(connection()) as c:
+                rw_rows=c.cursor().execute(q_rw,end,start,end).fetchall()
+            rw=pd.DataFrame(rw_rows,columns=["LOT_NUMBER","TRANSACTION_KEY","_time"])
+            rw["_time"]=pd.to_datetime(rw["_time"],errors="coerce")
+            rw=rw.dropna(subset=["_time"]).drop_duplicates()
+            if getattr(rw["_time"].dt,"tz",None) is not None:
+                rw["_time"]=rw["_time"].dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+            if rw["TRANSACTION_KEY"].duplicated().any():
+                raise ValueError("Conflicting rework transaction keys")
+            rw=rw.sort_values(["LOT_NUMBER","_time","TRANSACTION_KEY"])
+            rw["attempt"]=rw.groupby("LOT_NUMBER").cumcount()+1
+            current=data["Pre-EL"]
+            current=current[current["PRE_EL_LEVEL"].eq("NG")]
+            matched=current[["TRANSACTION_KEY","shift"]].merge(rw[["TRANSACTION_KEY","attempt"]],on="TRANSACTION_KEY",how="left",validate="one_to_one")
+            if matched["attempt"].isna().any():
+                raise ValueError("NG history incomplete")
+            for shift,g in matched.groupby("shift"):
+                rework_counts[shift]=[int(g["attempt"].eq(1).sum()),int(g["attempt"].eq(2).sum()),int(g["attempt"].ge(3).sum())]
+        else:
+            rework_error=True
+    except Exception:
+        rework_error=True
+
     # Historical defect events: count each transaction once per defect type and shift.
     pre_defect_counts={}
     pre_defect_error=False
@@ -359,7 +397,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.12</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.13</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -409,6 +447,15 @@ def dashboard():
         for j,label in enumerate(["Total Modules","OK Modules","NG Modules","NG %"]):
             cls=["","el-ok","el-ng","el-ng"][j]
             rows.append("<tr>"+"".join(f'<td>{label}</td><td class="qty {cls}">{vals[j]}</td>' for vals in shift_values)+"</tr>")
+        if stage=="Pre-EL":
+            for j,label in enumerate(["1st NG / Rework","2nd NG / Rework","3rd+ NG / Rework"]):
+                vals=[]
+                for i,shift in enumerate("ABC"):
+                    value="—" if rework_error or now<start+timedelta(hours=i*8) else f"{rework_counts.get(shift,[0,0,0])[j]:,}"
+                    vals.append(f'<td>{label}</td><td class="qty el-ng">{value}</td>')
+                rows.append("<tr>"+"".join(vals)+"</tr>")
+            if rework_error:
+                panels[stage].caption("Rework history unavailable; NG totals remain unchanged.")
         rows.append("<tr class='defect-heading'>"+("<th>Top 5 Defects</th><th>Qty</th>"*3)+"</tr>")
         for j in range(5):
             rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
