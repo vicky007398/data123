@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.5
+# Data123 V4.7
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -267,9 +267,40 @@ def dashboard():
         d["hour"]=((d["_time"]-start).dt.total_seconds()//3600).astype(int)
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
-    data={s:events(s) for s in stages}
+    data={s:events(s) for s in stages if s!="Pre-EL"}
+    # Count inspection attempts, not unique barcodes, for Pre-EL only.
+    # TAKE_PHOTO is the observed activity carrying CUR_LEVEL OK/NG.
+    pre_error=None
+    try:
+        q_pre=("SELECT DISTINCT TRANSACTION_KEY, LOT_NUMBER, EDIT_TIME, "
+               "UPPER(LTRIM(RTRIM(CUR_LEVEL))) FROM "+ident(schema)+".[WIP_TRANSACTION] "
+               "WHERE STEP_NAME='Pre_EL' AND ACTIVITY='TAKE_PHOTO' "
+               "AND EDIT_TIME>=? AND EDIT_TIME<? "
+               "AND UPPER(LTRIM(RTRIM(CUR_LEVEL))) IN ('OK','NG') "
+               "AND NULLIF(LTRIM(RTRIM(LOT_NUMBER)), '') IS NOT NULL "
+               "AND NULLIF(LTRIM(RTRIM(TRANSACTION_KEY)), '') IS NOT NULL "
+               "AND (UNDO_FLAG IS NULL OR UNDO_FLAG=0)")
+        with closing(connection()) as c:
+            records=c.cursor().execute(q_pre,start,end).fetchall()
+        pre=pd.DataFrame(records,columns=["TRANSACTION_KEY","LOT_NUMBER","_time","PRE_EL_LEVEL"])
+        pre["_time"]=pd.to_datetime(pre["_time"],errors="coerce")
+        pre=pre.dropna(subset=["_time"])
+        if getattr(pre["_time"].dt,"tz",None) is not None:
+            pre["_time"]=pre["_time"].dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+        pre=pre[(pre["_time"]>=start)&(pre["_time"]<end)]
+        pre=pre.drop_duplicates()
+        if pre["TRANSACTION_KEY"].duplicated().any():
+            raise ValueError("Conflicting records for the same transaction key")
+        pre["hour"]=((pre["_time"]-start).dt.total_seconds()//3600).astype(int)
+        pre["shift"]=pre["hour"].map(lambda h:"ABC"[h//8])
+        # No reliable historical defect-name field has been verified.
+        pre["PRE_EL_DEFECT"]=None
+        data["Pre-EL"]=pre
+    except Exception as e:
+        pre_error=str(e).replace(password,"[redacted]")
+        data["Pre-EL"]=pd.DataFrame()
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.5</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.7</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -277,7 +308,7 @@ def dashboard():
     for stage,level in levels.items():
         d=data[stage]
         if level not in d:
-            panels[stage].warning(stage+" inspection status or timestamp unavailable")
+            panels[stage].warning("Pre-EL transaction query unavailable: "+pre_error if stage=="Pre-EL" and pre_error else stage+" inspection status or timestamp unavailable")
             continue
         status=d[level].astype("string").str.strip().str.upper()
         valid=status.isin(["OK","NG"])
@@ -316,7 +347,7 @@ def dashboard():
         rows.append("<tr class='defect-heading'>"+("<th>Top 5 Defects</th><th>Qty</th>"*3)+"</tr>")
         for j in range(5):
             rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
-        panels[stage].markdown('<div class="el-title">'+escape(stage)+'</div><div class="shift-table-wrap"><table class="shift-table"><colgroup><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"></colgroup><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
+        panels[stage].markdown('<div class="el-title">'+escape(stage+(" | Test attempts incl. rework" if stage=="Pre-EL" else ""))+'</div><div class="shift-table-wrap"><table class="shift-table"><colgroup><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"><col style="width:23%"><col style="width:10.33%"></colgroup><thead><tr>'+''.join(headers)+'</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>',unsafe_allow_html=True)
     def compact(fig,height=165):
         fig.update_layout(height=height,margin=dict(l=36,r=12,t=34,b=27),font=dict(size=10),title_font_size=12,title_y=0.96,xaxis_title=None,yaxis_title=None)
         fig.update_xaxes(tickangle=0,nticks=8,automargin=True)
