@@ -104,8 +104,9 @@ st.markdown("""<style>
 .power-r0{background:#eff6ff}.power-r1{background:#ecfdf5}.power-r2{background:#f5f3ff}.power-r3{background:#e2e8f0;font-weight:700}
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
+[data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.9
+# Data123 V4.10
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -326,7 +327,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.9</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.10</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -395,9 +396,13 @@ def dashboard():
         for h in range(24):
             value="—" if counts is None or now < start+timedelta(hours=h) else f"{int(counts.loc[h]):,}"
             cells.append(f'<td class="h-{h//8}">{value}</td>')
+            if h%8==7:
+                first=h-7
+                total="—" if counts is None or now < start+timedelta(hours=first) else f"{int(sum(counts.loc[k] for k in range(first,h+1) if now>=start+timedelta(hours=k))):,}"
+                cells.append(f'<td class="h-{h//8} shift-total">{total}</td>')
         hourly_rows.append(f'<tr><th scope="row">{label}</th>'+''.join(cells)+'</tr>')
-    axis=''.join(f'<th class="h-{h//8}">{(h+6)%24}-{(h+7)%24}</th>' for h in range(24))
-    st.markdown('<div class="el-title">Hourly Production | Modules</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="8" class="shift-a">A SHIFT</th><th colspan="8" class="shift-b">B SHIFT</th><th colspan="8" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
+    axis=''.join(f'<th class="h-{h//8}">{(h+6)%24}-{(h+7)%24}</th>'+ (f'<th class="h-{h//8} shift-total">Total</th>' if h%8==7 else "") for h in range(24))
+    st.markdown('<div class="el-title">Hourly Production | Modules</div><div class="hour-table-wrap"><table class="hour-table"><thead><tr><th rowspan="2">Process</th><th colspan="9" class="shift-a">A SHIFT</th><th colspan="9" class="shift-b">B SHIFT</th><th colspan="9" class="shift-c">C SHIFT</th></tr><tr>'+axis+'</tr></thead><tbody>'+''.join(hourly_rows)+'</tbody></table></div>',unsafe_allow_html=True)
     summary=[]
     def add(label,d,mask=None,denom=None):
         if "shift" not in d: return
