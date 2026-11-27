@@ -105,7 +105,7 @@ st.markdown("""<style>
 .power-r0 th{background:#2563eb}.power-r1 th{background:#0f766e}.power-r2 th{background:#7c3aed}.power-r3 th{background:#123052}
 .power-total{font-weight:700}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.7
+# Data123 V4.8
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -268,6 +268,8 @@ def dashboard():
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
     data={s:events(s) for s in stages if s!="Pre-EL"}
+    # Preserve the original shift-wise defect source independently of inspection attempts.
+    pre_defect_data=events("Pre-EL")
     # Count inspection attempts, not unique barcodes, for Pre-EL only.
     # TAKE_PHOTO is the observed activity carrying CUR_LEVEL OK/NG.
     pre_error=None
@@ -293,14 +295,13 @@ def dashboard():
             raise ValueError("Conflicting records for the same transaction key")
         pre["hour"]=((pre["_time"]-start).dt.total_seconds()//3600).astype(int)
         pre["shift"]=pre["hour"].map(lambda h:"ABC"[h//8])
-        # No reliable historical defect-name field has been verified.
-        pre["PRE_EL_DEFECT"]=None
+        # Historical inspection attempts and current module defect descriptions are separate sources.
         data["Pre-EL"]=pre
     except Exception as e:
         pre_error=str(e).replace(password,"[redacted]")
         data["Pre-EL"]=pd.DataFrame()
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.7</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.8</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -315,6 +316,7 @@ def dashboard():
         mask=status.eq("NG").fillna(False)
         rej[stage]=(mask,valid,{"NG"})
         defect_col=defects[stage]
+        defect_data=pre_defect_data if stage=="Pre-EL" else d
         shift_values=[]
         shift_defects=[]
         headers=[]
@@ -326,8 +328,9 @@ def dashboard():
             future=now < start+timedelta(hours=i*8)
             values=["—"]*4 if future else [f"{total:,}",f"{ok:,}",f"{ng:,}",f"{100*ng/total:.2f}%" if total else "—"]
             counts=Counter()
-            if not future and defect_col in d.columns:
-                for raw in d.loc[pick&mask,defect_col]:
+            if not future and defect_col in defect_data.columns and level in defect_data.columns and "shift" in defect_data.columns:
+                defect_pick=defect_data["shift"].eq(shift)&defect_data[level].astype("string").str.strip().str.upper().eq("NG").fillna(False)
+                for raw in defect_data.loc[defect_pick,defect_col]:
                     names=set()
                     if pd.notna(raw):
                         for entry in str(raw).split(";"):
@@ -335,7 +338,7 @@ def dashboard():
                             if name: names.add(name)
                     counts.update(names if stage=="Pre-EL" else (names or {"unspecified"}))
             ranked=sorted(counts.items(),key=lambda item:(-item[1],item[0]))[:5]
-            if not future and ng and defect_col not in d.columns:
+            if not future and ng and defect_col not in defect_data.columns:
                 ranked=[("Defect column unavailable","—")]
             shift_values.append(values)
             shift_defects.append([(escape(name.title()),f"{qty:,}" if isinstance(qty,int) else str(qty)) for name,qty in ranked]+([("","")] if stage=="Pre-EL" and not future else [("—","—")])*(5-len(ranked)))
