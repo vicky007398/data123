@@ -106,7 +106,7 @@ st.markdown("""<style>
 .power-total{font-weight:700}
 [data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.10
+# Data123 V4.11
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -269,6 +269,35 @@ def dashboard():
         d["shift"]=d["hour"].map(lambda h:"ABC"[h//8])
         return d
     data={s:events(s) for s in stages if s!="Pre-EL"}
+    # Recover completed lamination modules with no recorded entry timestamp.
+    # Never infer a lamination hour from Pre-EL or another upstream process.
+    if "Lamination" in active:
+        try:
+            q_lam=("SELECT T.LOT_NUMBER, MIN(T.EDIT_TIME) FROM "
+                   +ident(schema)+".[WIP_TRANSACTION] T "
+                   "WHERE T.STEP_NAME=N'层压' AND T.ACTIVITY='TRACKOUT' "
+                   "AND T.EDIT_TIME>=? AND T.EDIT_TIME<? "
+                   "AND (T.UNDO_FLAG IS NULL OR T.UNDO_FLAG=0) "
+                   "AND NULLIF(LTRIM(RTRIM(T.LOT_NUMBER)), '') IS NOT NULL "
+                   "AND NOT EXISTS (SELECT 1 FROM "+ident(schema)+"."+ident(table)+" C "
+                   "WHERE C.LOT_NUMBER=T.LOT_NUMBER AND C."+ident(lookup[active["Lamination"]])+" IS NOT NULL) "
+                   "GROUP BY T.LOT_NUMBER")
+            with closing(connection()) as c:
+                fallback_rows=c.cursor().execute(q_lam,start,end).fetchall()
+            fallback=pd.DataFrame(fallback_rows,columns=["LOT_NUMBER","_time"])
+            fallback["_time"]=pd.to_datetime(fallback["_time"],errors="coerce")
+            fallback=fallback.dropna(subset=["_time"])
+            if getattr(fallback["_time"].dt,"tz",None) is not None:
+                fallback["_time"]=fallback["_time"].dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+            fallback=fallback[(fallback["_time"]>=start)&(fallback["_time"]<end)].copy()
+            fallback["hour"]=((fallback["_time"]-start).dt.total_seconds()//3600).astype(int)
+            fallback["shift"]=fallback["hour"].map(lambda h:"ABC"[h//8])
+            lam=data["Lamination"]
+            fallback=fallback[~fallback["LOT_NUMBER"].astype(str).str.strip().isin(lam["LOT_NUMBER"].astype(str).str.strip())]
+            data["Lamination"]=pd.concat([lam,fallback],ignore_index=True)
+        except Exception:
+            st.warning("Lamination TRACKOUT fallback unavailable; Lam Count currently uses LAM_DATE_IN only.")
+
 
     # Count inspection attempts, not unique barcodes, for Pre-EL only.
     # TAKE_PHOTO is the observed activity carrying CUR_LEVEL OK/NG.
@@ -327,7 +356,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.10</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.11</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
