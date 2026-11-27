@@ -106,7 +106,7 @@ st.markdown("""<style>
 .power-total{font-weight:700}
 [data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.14
+# Data123 V4.15
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -397,7 +397,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.14</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.15</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -452,13 +452,13 @@ def dashboard():
                 vals=[]
                 for i,shift in enumerate("ABC"):
                     qty=sum(rework_counts.get(shift,[0,0,0])[1:])
-                    ng_count=int((d["shift"].eq(shift)&mask).sum())
+                    tested_count=int((d["shift"].eq(shift)&valid).sum())
                     if rework_error or now<start+timedelta(hours=i*8):
                         value="—"
                     elif j==0:
                         value=f"{qty:,}"
                     else:
-                        value=f"{100*qty/ng_count:.2f}%" if ng_count else "—"
+                        value=f"{100*qty/tested_count:.2f}%" if tested_count else "—"
                     vals.append(f'<td>{label}</td><td class="qty el-ng">{value}</td>')
                 rows.append("<tr>"+"".join(vals)+"</tr>")
             if rework_error:
