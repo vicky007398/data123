@@ -106,7 +106,7 @@ st.markdown("""<style>
 .power-total{font-weight:700}
 [data-testid=stMarkdownContainer] .hour-table .shift-total{font-weight:800;border-left:2px solid #8395ab;border-right:2px solid #8395ab;background:#dbe6f3}
 </style>""",unsafe_allow_html=True)
-# Data123 V4.17
+# Data123 V4.18
 defaults = {}
 try:
     defaults = json.loads(Path(__file__).with_name("connection.local.json").read_text(encoding="utf-8"))
@@ -397,7 +397,7 @@ def dashboard():
     except Exception:
         pre_defect_error=True
     fqc=data["FQC"]
-    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.17</span></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="live-head"><strong>Live Dashboard</strong><span>{day:%d %b %Y} · MES connected · Updated {datetime.now():%H:%M:%S} · V4.18</span></div>',unsafe_allow_html=True)
     rej={}
     now=datetime.now()
     pre_panel, final_panel = st.columns(2, gap="small")
@@ -457,6 +457,8 @@ def dashboard():
             rows.append("<tr>"+"".join(vals)+"</tr>")
             if rework_error:
                 panels[stage].caption("Rework history unavailable; NG totals remain unchanged.")
+        if stage=="Final EL":
+            rows.append("<tr>"+('<td>&nbsp;</td><td class="qty">&nbsp;</td>'*3)+"</tr>")
         rows.append("<tr class='defect-heading'>"+("<th>Top 5 Defects</th><th>Qty</th>"*3)+"</tr>")
         for j in range(5):
             rows.append("<tr>"+"".join(f'<td>{items[j][0]}</td><td class="qty">{items[j][1]}</td>' for items in shift_defects)+"</tr>")
